@@ -8,7 +8,13 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.zIndex
+import kotlinx.coroutines.launch
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -53,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -60,7 +67,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -113,6 +124,13 @@ fun Action.describe(): String = when (this) {
     Action.NextHand -> "deal the next hand"
 }
 
+/** Drops the font's top/bottom padding so a single glyph sits dead centre in a circle. */
+private val centeredGlyph = TextStyle(
+    platformStyle = PlatformTextStyle(includeFontPadding = false),
+    lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
+    lineHeight = 1.em,
+)
+
 private val feltBrush = Brush.radialGradient(
     0f to Palette.feltLight, 0.55f to Palette.felt, 1f to Palette.feltDark,
     center = Offset(540f, 900f), radius = 1500f,
@@ -161,7 +179,7 @@ private fun TopBar(g: GameState, vm: GameViewModel) {
                     Text("Trump ", color = Palette.textDim, fontSize = 15.sp)
                     if (c.trump != null) {
                         Box(Modifier.size(24.dp).clip(CircleShape).background(Palette.cream), contentAlignment = Alignment.Center) {
-                            Text(c.trump!!.glyph, color = c.trump!!.color, fontSize = 17.sp)
+                            Text(c.trump!!.glyph, color = c.trump!!.color, fontSize = 17.sp, style = centeredGlyph)
                         }
                     } else Text("None", color = Palette.text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     Text(
@@ -210,7 +228,12 @@ private fun Table(g: GameState, vm: GameViewModel) {
                 seat == 1 -> Alignment.CenterStart
                 else -> Alignment.CenterEnd
             }
-            val nudge = if (g.players == 3) Modifier.offset(y = (-40).dp) else Modifier
+            // Side seats sit above the horizontal trick cards so nothing overlaps.
+            val nudge = when {
+                g.players == 4 && seat == 2 -> Modifier
+                g.players == 4 -> Modifier.offset(y = (-64).dp)
+                else -> Modifier.offset(y = (-100).dp)
+            }
             Box(Modifier.align(align).then(nudge).padding(6.dp)) { Seat(g, vm, seat) }
         }
         Box(Modifier.align(Alignment.Center)) { Center(g, vm, tableW) }
@@ -237,24 +260,30 @@ private fun Seat(g: GameState, vm: GameViewModel, seat: Int) {
 private fun SeatTag(g: GameState, vm: GameViewModel, seat: Int) {
     val active = g.turn == seat && vm.shownTrick == null && g.phase != Phase.HAND_OVER && g.phase != Phase.GAME_OVER
     val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
-        0.55f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "pulse",
+        0f, 1f, infiniteRepeatable(tween(650), RepeatMode.Reverse), label = "pulse",
     )
     val c = g.contract
+    val tagShape = RoundedCornerShape(50)
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(
-            Modifier.clip(RoundedCornerShape(50))
-                .background(if (active) Palette.gold.copy(alpha = pulse) else Color(0x40000000))
-                .padding(horizontal = 12.dp, vertical = 4.dp),
+            Modifier
+                .graphicsLayer { if (active) { scaleX = 1.06f + 0.06f * pulse; scaleY = scaleX } }
+                .shadow(if (active) 14.dp else 0.dp, tagShape, ambientColor = Palette.gold, spotColor = Palette.gold)
+                .clip(tagShape)
+                .background(if (active) Palette.gold else Color(0x40000000))
+                .border(if (active) 2.dp else 0.dp, if (active) Palette.cream.copy(alpha = 0.5f + 0.5f * pulse) else Color.Transparent, tagShape)
+                .padding(horizontal = 14.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(g.name(seat), color = if (active) Color(0xFF2A1F05) else Palette.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             if (g.dealer == seat) {
                 Spacer(Modifier.width(6.dp))
                 Box(Modifier.size(20.dp).clip(CircleShape).background(Palette.cream), contentAlignment = Alignment.Center) {
-                    Text("D", color = Palette.ink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("D", color = Palette.ink, fontSize = 12.sp, fontWeight = FontWeight.Bold, style = centeredGlyph)
                 }
             }
         }
+        if (active && seat != 0) ThinkingDots()
         if (c != null && g.phase !in prePlay || g.phase == Phase.PLAY) {
             Spacer(Modifier.height(4.dp))
             when {
@@ -274,6 +303,46 @@ private fun SeatTag(g: GameState, vm: GameViewModel, seat: Int) {
 }
 
 @Composable
+private fun ThinkingDots() {
+    val t by rememberInfiniteTransition(label = "dots").animateFloat(
+        0f, 3f, infiniteRepeatable(tween(1100, easing = androidx.compose.animation.core.LinearEasing)), label = "dots",
+    )
+    Row(Modifier.padding(top = 5.dp).height(10.dp), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+        repeat(3) { i ->
+            val on = ((t - i + 3f) % 3f) < 1f
+            Box(Modifier.size(if (on) 9.dp else 7.dp).clip(CircleShape).background(if (on) Palette.gold else Palette.text.copy(alpha = 0.35f)))
+        }
+    }
+}
+
+/** Gold arrow pointing from the table centre toward whoever's turn it is. */
+@Composable
+private fun TurnArrow(g: GameState, seat: Int, distance: Float) {
+    val bob by rememberInfiniteTransition(label = "bob").animateFloat(
+        0f, 1f, infiniteRepeatable(tween(600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bob",
+    )
+    val (dx, dy) = seatDir(g, seat)
+    val angle by animateFloatAsState(Math.toDegrees(kotlin.math.atan2(dy.toDouble(), dx.toDouble())).toFloat(), tween(300), label = "angle")
+    val density = LocalDensity.current
+    val d = distance + 7f * bob
+    androidx.compose.foundation.Canvas(
+        Modifier
+            .offset { with(density) { IntOffset((dx * d).dp.roundToPx(), (dy * d).dp.roundToPx()) } }
+            .size(34.dp)
+            .zIndex(10f)
+            .graphicsLayer { rotationZ = angle },
+    ) {
+        val w = size.width
+        val h = size.height
+        val p = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.92f, h / 2); lineTo(w * 0.18f, h * 0.12f); lineTo(w * 0.36f, h / 2); lineTo(w * 0.18f, h * 0.88f); close()
+        }
+        drawPath(p, Color(0x66000000), style = androidx.compose.ui.graphics.drawscope.Stroke(w * 0.14f))
+        drawPath(p, Palette.gold)
+    }
+}
+
+@Composable
 private fun TrickDots(n: Int) {
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.height(10.dp)) {
         repeat(n) { Box(Modifier.size(10.dp).clip(CircleShape).background(Palette.gold)) }
@@ -282,8 +351,11 @@ private fun TrickDots(n: Int) {
 
 @Composable
 private fun Center(g: GameState, vm: GameViewModel, tableWidth: Dp) {
-    val cardW = min(78f, tableWidth.value / 5.3f).dp
-    val reach = cardW.value * 1.1f
+    // Leave room for the side seats: ~110dp each.
+    val cardW = min(66f, (tableWidth.value - 230f) / 2.5f).coerceAtLeast(50f).dp
+    val reach = cardW.value * 0.95f
+    val st0 = vm.shownTrick
+    val turnSeat = if (st0 == null && g.phase != Phase.HAND_OVER && g.phase != Phase.GAME_OVER) g.turn else null
     Box(Modifier.size(width = cardW * 4.2f, height = cardW * 3.6f), contentAlignment = Alignment.Center) {
         val st = vm.shownTrick
         when {
@@ -309,6 +381,8 @@ private fun Center(g: GameState, vm: GameViewModel, tableWidth: Dp) {
                 }
             }
         }
+        // In play the arrow sits in the gap between trick cards; during bidding it clears the up card.
+        if (turnSeat != null) TurnArrow(g, turnSeat, if (g.phase == Phase.PLAY) 4f else cardW.value * 1.05f)
     }
 }
 
@@ -348,7 +422,13 @@ private fun Prompt(g: GameState, vm: GameViewModel) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(status(g, vm), color = Palette.text, style = androidx.compose.material3.MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        val yours = vm.humanTurn
+        Text(
+            status(g, vm), color = if (yours) Palette.gold else Palette.text,
+            style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+            fontSize = if (yours) 22.sp else 19.sp, fontWeight = if (yours) FontWeight.Bold else FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+        )
         vm.hint?.let {
             Text("Hint: ${it.describe()}", color = Palette.gold, fontSize = 16.sp, modifier = Modifier.padding(top = 2.dp))
         }
@@ -383,8 +463,8 @@ private fun status(g: GameState, vm: GameViewModel): String {
         Phase.DEFEND_ALONE -> "${g.name(c!!.maker)} is going alone. Defend alone?"
         Phase.PLAY -> when {
             vm.selected != null -> "Tap the ${vm.selected?.spoken} again to play it."
-            g.trick.isEmpty() -> "Your lead. Tap a card."
-            else -> "Your turn. Tap a card."
+            g.trick.isEmpty() -> "Your lead. Tap or swipe up a card."
+            else -> "Your turn. Tap or swipe up a card."
         }
         else -> ""
     }
@@ -409,9 +489,10 @@ private fun Actions(g: GameState, vm: GameViewModel) {
             }
             Phase.NAME_JOKER_SUIT -> for (s in Suit.entries) SuitButton(s) { vm.act(Action.NameSuit(s)) }
             Phase.BID1 -> {
-                Secondary("Pass") { vm.act(Action.Pass) }
-                if (Action.OrderUp(false) in legal) Primary(if (g.dealer == 0) "Pick it up" else "Order it up") { vm.act(Action.OrderUp(false)) }
-                if (Action.OrderUp(true) in legal) Secondary("Go alone") { vm.act(Action.OrderUp(true)) }
+                // Widths roughly follow label length so all three fit on one line on a phone.
+                Secondary("Pass", Modifier.weight(0.8f)) { vm.act(Action.Pass) }
+                if (Action.OrderUp(false) in legal) Primary(if (g.dealer == 0) "Pick it up" else "Order it up", Modifier.weight(1.3f)) { vm.act(Action.OrderUp(false)) }
+                if (Action.OrderUp(true) in legal) Secondary("Go alone", Modifier.weight(1.1f)) { vm.act(Action.OrderUp(true)) }
             }
             Phase.BID2 -> Bid2(g, vm, legal)
             else -> {}
@@ -446,23 +527,27 @@ private fun Bid2(g: GameState, vm: GameViewModel, legal: List<Action>) {
     }
 }
 
+private val pillPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+
 @Composable
-private fun Primary(label: String, onClick: () -> Unit) {
+private fun Primary(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Button(
         onClick, shape = RoundedCornerShape(50),
         colors = ButtonDefaults.buttonColors(containerColor = Palette.gold, contentColor = Color(0xFF2A1F05)),
-        modifier = Modifier.heightIn(min = 52.dp),
-    ) { Text(label, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp)) }
+        contentPadding = pillPadding,
+        modifier = modifier.heightIn(min = 52.dp),
+    ) { Text(label, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
 }
 
 @Composable
-private fun Secondary(label: String, onClick: () -> Unit) {
+private fun Secondary(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     OutlinedButton(
         onClick, shape = RoundedCornerShape(50),
         border = androidx.compose.foundation.BorderStroke(1.5.dp, Palette.text.copy(alpha = 0.6f)),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = Palette.text),
-        modifier = Modifier.heightIn(min = 52.dp),
-    ) { Text(label, fontSize = 18.sp) }
+        contentPadding = pillPadding,
+        modifier = modifier.heightIn(min = 52.dp),
+    ) { Text(label, fontSize = 18.sp, maxLines = 1, softWrap = false) }
 }
 
 @Composable
@@ -506,11 +591,33 @@ private fun HandRow(g: GameState, vm: GameViewModel) {
                     val playable = legal?.contains(card) == true || discarding
                     val raised = card == vm.selected || card == hinted
                     val lift by animateFloatAsState(if (raised) -22f else if (playable) -6f else 0f, label = "lift")
+                    // Swipe up to play: the card follows the finger and plays past the threshold.
+                    val drag = remember { Animatable(0f) }
+                    val scope = rememberCoroutineScope()
+                    val density = LocalDensity.current.density
+                    val threshold = maxOf(50f, cardH * 0.45f)
                     PlayingCard(
                         card, cardW.dp,
                         Modifier
-                            .offset(x = (start + i * step).dp, y = (abs(k) * abs(k) * 2.2f + lift).dp)
-                            .rotate(k * 3.2f)
+                            .offset(x = (start + i * step).dp, y = (abs(k) * abs(k) * 2.2f + lift + drag.value).dp)
+                            .rotate(k * 3.2f * (1f + drag.value / threshold).coerceIn(0f, 1f))
+                            .zIndex(if (drag.value < 0f) 1f else 0f)
+                            .pointerInput(card, playable) {
+                                if (!playable) return@pointerInput
+                                detectVerticalDragGestures(
+                                    onDragEnd = {
+                                        if (drag.value < -threshold) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            vm.swipeCard(card)
+                                        }
+                                        scope.launch { drag.animateTo(0f, spring()) }
+                                    },
+                                    onDragCancel = { scope.launch { drag.animateTo(0f, spring()) } },
+                                ) { change, dy ->
+                                    change.consume()
+                                    scope.launch { drag.snapTo((drag.value + dy / density).coerceIn(-cardH * 2.5f, 0f)) }
+                                }
+                            }
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() }, indication = null,
                                 enabled = playable,

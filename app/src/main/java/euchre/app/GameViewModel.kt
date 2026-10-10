@@ -155,6 +155,18 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         act(a)
     }
 
+    /** Swipe up on a card: a deliberate gesture, so it skips the tap-twice confirmation. */
+    fun swipeCard(card: euchre.core.Card) {
+        val g = game ?: return
+        if (!humanTurn) return
+        val a = when (g.phase) {
+            Phase.PLAY -> Action.Play(card)
+            Phase.DISCARD, Phase.LONER_DISCARD -> Action.Discard(card)
+            else -> return
+        }
+        act(a)
+    }
+
     fun requestHint() {
         val g = game ?: return
         if (!humanTurn) return
