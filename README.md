@@ -21,4 +21,4 @@ Tournament vs an IQ-50 team (400 games each): IQ 0 18%, 20 28%, 40 47%, 60 51%, 
 Re-run: `./gradlew :core:test --tests '*Tournament*' -Ptournament -Pgames=400`.
 
 ## Build
-`./gradlew :core:test :app:assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk`
+`./gradlew :core:test :app:assembleRelease` → `app/build/outputs/apk/release/app-release.apk` (R8-optimized, signed with the debug key so it installs over debug builds). Use the release build on phones: debug builds stutter in animations.

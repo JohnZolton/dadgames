@@ -10,7 +10,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.zIndex
@@ -356,7 +359,12 @@ private fun Center(g: GameState, vm: GameViewModel, tableWidth: Dp) {
     val reach = cardW.value * 0.95f
     val st0 = vm.shownTrick
     val turnSeat = if (st0 == null && g.phase != Phase.HAND_OVER && g.phase != Phase.GAME_OVER) g.turn else null
-    Box(Modifier.size(width = cardW * 4.2f, height = cardW * 3.6f), contentAlignment = Alignment.Center) {
+    Box(
+        Modifier.size(width = cardW * 4.2f, height = cardW * 3.6f).onGloballyPositioned { c ->
+            vm.tableCenter = c.positionInRoot() + Offset(c.size.width / 2f, c.size.height / 2f)
+        },
+        contentAlignment = Alignment.Center,
+    ) {
         val st = vm.shownTrick
         when {
             g.phase in setOf(Phase.MISDEAL_CHECK, Phase.GO_UNDER, Phase.NAME_JOKER_SUIT, Phase.BID1) -> {
@@ -376,7 +384,7 @@ private fun Center(g: GameState, vm: GameViewModel, tableWidth: Dp) {
                 val cards = st?.cards ?: g.trick
                 for ((i, p) in cards.withIndex()) {
                     key(p) {
-                        TrickCard(g, p, cardW, reach, z = i, winner = st?.winner, sweeping = st?.sweeping == true)
+                        TrickCard(g, vm, p, cardW, reach, z = i, winner = st?.winner, sweeping = st?.sweeping == true)
                     }
                 }
             }
@@ -390,25 +398,37 @@ private fun Center(g: GameState, vm: GameViewModel, tableWidth: Dp) {
 private fun key(p: Played, content: @Composable () -> Unit) = androidx.compose.runtime.key(p.seat, p.card) { content() }
 
 @Composable
-private fun TrickCard(g: GameState, p: Played, cardW: Dp, reach: Float, z: Int, winner: Int?, sweeping: Boolean) {
-    val density = LocalDensity.current
+private fun TrickCard(g: GameState, vm: GameViewModel, p: Played, cardW: Dp, reach: Float, z: Int, winner: Int?, sweeping: Boolean) {
+    val px = LocalDensity.current.density
+    // A card you just played starts exactly where it left your hand (position, size, tilt).
+    val launch = remember { vm.takeLaunch(p.card) }
     val arrive = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { arrive.animateTo(1f, tween(280, easing = FastOutSlowInEasing)) }
+    LaunchedEffect(Unit) {
+        arrive.animateTo(1f, if (launch != null) tween(320, easing = FastOutSlowInEasing) else tween(280, easing = FastOutSlowInEasing))
+    }
     val sweep by animateFloatAsState(if (sweeping) 1f else 0f, tween(360, easing = FastOutSlowInEasing), label = "sweep")
     val (dx, dy) = seatDir(g, p.seat)
     val far = 4.5f
     val (wx, wy) = winner?.let { seatDir(g, it) } ?: (0f to 0f)
-    val tilt = listOf(-4f, 7f, 3f, -6f)[p.seat % 4]
+    val restTilt = listOf(-4f, 7f, 3f, -6f)[p.seat % 4]
     val t = arrive.value
-    var x = dx * reach * (far + (1 - far) * t)
-    var y = dy * reach * (far + (1 - far) * t)
-    x += (wx * reach * far - x) * sweep
-    y += (wy * reach * far - y) * sweep
+    // Positions in px relative to the table centre.
+    val restX = dx * reach * px
+    val restY = dy * reach * px
+    val fromX = launch?.let { it.center.x - vm.tableCenter.x } ?: (dx * reach * far * px)
+    val fromY = launch?.let { it.center.y - vm.tableCenter.y } ?: (dy * reach * far * px)
+    var x = fromX + (restX - fromX) * t
+    var y = fromY + (restY - fromY) * t
+    x += (wx * reach * far * px - x) * sweep
+    y += (wy * reach * far * px - y) * sweep
+    val tilt = (launch?.tilt ?: restTilt) + (restTilt - (launch?.tilt ?: restTilt)) * t
+    val startScale = launch?.let { it.widthDp / cardW.value } ?: 1f
+    val scale = startScale + (1f - startScale) * t
     PlayingCard(
         p.card, cardW,
         Modifier
-            .offset { with(density) { IntOffset(x.dp.roundToPx(), y.dp.roundToPx()) } }
-            .graphicsLayer { rotationZ = tilt; alpha = 1f - sweep; shadowElevation = z.toFloat() },
+            .offset { IntOffset(x.toInt(), y.toInt()) }
+            .graphicsLayer { rotationZ = tilt; scaleX = scale; scaleY = scale; alpha = 1f - sweep; shadowElevation = z.toFloat() },
         glow = winner == p.seat && !sweeping,
     )
 }
@@ -571,6 +591,7 @@ private fun NoTrumpButton(onClick: () -> Unit) {
 @Composable
 private fun HandRow(g: GameState, vm: GameViewModel) {
     val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current.density
     BoxWithConstraints(Modifier.fillMaxWidth().padding(bottom = 18.dp)) {
         val fullW = maxWidth
         val hand = sortHand(g.hands[0], g.trump)
@@ -591,40 +612,58 @@ private fun HandRow(g: GameState, vm: GameViewModel) {
                     val playable = legal?.contains(card) == true || discarding
                     val raised = card == vm.selected || card == hinted
                     val lift by animateFloatAsState(if (raised) -22f else if (playable) -6f else 0f, label = "lift")
-                    // Swipe up to play: the card follows the finger and plays past the threshold.
-                    val drag = remember { Animatable(0f) }
+                    // Remaining cards slide together when one leaves the hand.
+                    val baseX by animateFloatAsState(start + i * step, spring(stiffness = 500f), label = "x")
+                    val baseY = abs(k) * abs(k) * 2.2f + lift
+                    // Swipe up to play: the card follows the finger exactly (plain state, no queued animations)
+                    // and plays once it has travelled past the threshold.
+                    var dragX by remember { mutableFloatStateOf(0f) }
+                    var dragY by remember { mutableFloatStateOf(0f) }
+                    var dragging by remember { mutableStateOf(false) }
+                    var centerInRoot by remember { mutableStateOf(Offset.Zero) }
                     val scope = rememberCoroutineScope()
-                    val density = LocalDensity.current.density
                     val threshold = maxOf(50f, cardH * 0.45f)
+                    val tilt = k * 3.2f * (1f + dragY / threshold).coerceIn(0f, 1f)
+                    fun springBack() = scope.launch {
+                        val x0 = dragX
+                        val y0 = dragY
+                        androidx.compose.animation.core.animate(1f, 0f, animationSpec = spring(dampingRatio = 0.7f, stiffness = 600f)) { v, _ ->
+                            dragX = x0 * v; dragY = y0 * v
+                        }
+                    }
+                    fun launchAndPlay(swiped: Boolean) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        vm.handLaunch = HandLaunch(card, centerInRoot, tilt, cardW)
+                        if (swiped) vm.swipeCard(card) else vm.tapCard(card)
+                    }
                     PlayingCard(
                         card, cardW.dp,
                         Modifier
-                            .offset(x = (start + i * step).dp, y = (abs(k) * abs(k) * 2.2f + lift + drag.value).dp)
-                            .rotate(k * 3.2f * (1f + drag.value / threshold).coerceIn(0f, 1f))
-                            .zIndex(if (drag.value < 0f) 1f else 0f)
+                            .offset(x = (baseX + dragX).dp, y = (baseY + dragY).dp)
+                            .onGloballyPositioned { c ->
+                                centerInRoot = c.positionInRoot() + Offset(c.size.width / 2f, c.size.height / 2f)
+                            }
+                            .rotate(tilt)
+                            .zIndex(if (dragging || dragY < 0f) 1f else 0f)
                             .pointerInput(card, playable) {
                                 if (!playable) return@pointerInput
-                                detectVerticalDragGestures(
+                                detectDragGestures(
+                                    onDragStart = { dragging = true },
                                     onDragEnd = {
-                                        if (drag.value < -threshold) {
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            vm.swipeCard(card)
-                                        }
-                                        scope.launch { drag.animateTo(0f, spring()) }
+                                        dragging = false
+                                        if (dragY < -threshold) launchAndPlay(swiped = true) else springBack()
                                     },
-                                    onDragCancel = { scope.launch { drag.animateTo(0f, spring()) } },
-                                ) { change, dy ->
+                                    onDragCancel = { dragging = false; springBack() },
+                                ) { change, amount ->
                                     change.consume()
-                                    scope.launch { drag.snapTo((drag.value + dy / density).coerceIn(-cardH * 2.5f, 0f)) }
+                                    dragX += amount.x / density
+                                    dragY = (dragY + amount.y / density).coerceIn(-cardH * 3f, 12f)
                                 }
                             }
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() }, indication = null,
                                 enabled = playable,
-                            ) {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                vm.tapCard(card)
-                            },
+                            ) { launchAndPlay(swiped = false) },
                         dim = legal != null && !legal.contains(card),
                         glow = raised,
                     )
@@ -689,7 +728,10 @@ private fun ResultPanel(g: GameState, vm: GameViewModel) {
                 Spacer(Modifier.height(24.dp))
                 if (gameOver) {
                     val s = vm.stats
-                    Text("You've won ${s.won} of ${s.played} games", color = Palette.textDim, fontSize = 15.sp)
+                    Text(
+                        "Win rate ${s.winRate}% · " + if (s.streak >= 2) "${s.streak} wins in a row" else "${s.won} of ${s.played} games",
+                        color = Palette.textDim, fontSize = 15.sp,
+                    )
                     Spacer(Modifier.height(16.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Secondary("Menu") { vm.leaveGame() }

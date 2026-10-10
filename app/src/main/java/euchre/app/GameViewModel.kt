@@ -45,14 +45,33 @@ data class Stats(
     val hands: Int = 0,
     val called: Int = 0,
     val made: Int = 0,
+    /** Your side euchred them. */
     val euchres: Int = 0,
+    /** Lone marches (all five tricks alone) by you. */
     val loners: Int = 0,
-)
+    /** Your side called trump and got euchred. */
+    val euchredUs: Int = 0,
+    val marches: Int = 0,
+    val lonersTried: Int = 0,
+    val lonersMade: Int = 0,
+    val pointsFor: Int = 0,
+    val pointsAgainst: Int = 0,
+    /** Newest first, capped at 20. */
+    val recent: List<GameRecord> = emptyList(),
+) {
+    val winRate: Int get() = if (played == 0) 0 else Math.round(won * 100f / played)
+}
+
+@Serializable
+data class GameRecord(val time: Long, val won: Boolean, val us: Int, val them: Int, val players: Int, val abandoned: Boolean = false)
+
+/** Where a card was on screen when you played it, so it can glide from there to the table. */
+data class HandLaunch(val card: euchre.core.Card, val center: androidx.compose.ui.geometry.Offset, val tilt: Float, val widthDp: Float)
 
 /** A finished trick held on the table for a moment before it's swept to the winner. */
 data class ShownTrick(val cards: List<Played>, val winner: Int, val sweeping: Boolean = false)
 
-enum class Screen { HOME, GAME, SETTINGS, HELP }
+enum class Screen { HOME, GAME, SETTINGS, HELP, STATS }
 
 private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -73,6 +92,13 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     var selected by mutableStateOf<euchre.core.Card?>(null)
     var thinking by mutableStateOf(false)
         private set
+
+    /** UI geometry for the hand → table handoff (not game state, so not persisted). */
+    var handLaunch: HandLaunch? = null
+    var tableCenter = androidx.compose.ui.geometry.Offset.Zero
+
+    fun takeLaunch(card: euchre.core.Card): HandLaunch? =
+        handLaunch?.takeIf { it.card == card }.also { if (it != null) handLaunch = null }
 
     private var bots = makeBots()
     private var job: Job? = null
@@ -176,9 +202,12 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** One writer thread so saves land in order; snapshots are never mutated after this point. */
+    private val saveDispatcher = Dispatchers.Default.limitedParallelism(1)
+
     private fun storeGame(g: GameState) {
         game = g
-        prefs.edit().putString("game", g.toJson()).apply()
+        viewModelScope.launch(saveDispatcher) { prefs.edit().putString("game", g.toJson()).apply() }
     }
 
     private fun apply(a: Action) {
@@ -240,16 +269,38 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             made = stats.made + if (r.maker == 0 && made) 1 else 0,
             euchres = stats.euchres + if (!weCalled && !made) 1 else 0,
             loners = stats.loners + if (r.maker == 0 && r.alone && r.kind == ResultKind.LONE_MARCH) 1 else 0,
+            euchredUs = stats.euchredUs + if (weCalled && !made) 1 else 0,
+            marches = stats.marches + if (weCalled && r.makerTricks == 5) 1 else 0,
+            lonersTried = stats.lonersTried + if (r.maker == 0 && r.alone) 1 else 0,
+            lonersMade = stats.lonersMade + if (r.maker == 0 && r.alone && made) 1 else 0,
+            pointsFor = stats.pointsFor + r.points[us],
+            pointsAgainst = stats.pointsAgainst + r.points.withIndex().filter { it.index != us }.sumOf { it.value },
         )
         if (g.phase == Phase.GAME_OVER) {
             val won = g.winner == us
             val streak = if (won) s.streak + 1 else 0
-            s = s.copy(played = s.played + 1, won = s.won + if (won) 1 else 0, streak = streak, bestStreak = maxOf(s.bestStreak, streak))
+            val rec = GameRecord(System.currentTimeMillis(), won, g.scores[us], themScore(g), g.players)
+            s = s.copy(
+                played = s.played + 1, won = s.won + if (won) 1 else 0, streak = streak,
+                bestStreak = maxOf(s.bestStreak, streak), recent = (listOf(rec) + s.recent).take(20),
+            )
         }
         saveStats(s)
     }
 
-    private fun recordAbandon() = saveStats(stats.copy(played = stats.played + 1, streak = 0))
+    private fun themScore(g: GameState): Int {
+        val us = g.rules.team(0)
+        return g.scores.withIndex().filter { it.index != us }.maxOf { it.value }
+    }
+
+    /** Leaving a game unfinished for a new one counts as a loss. */
+    private fun recordAbandon() {
+        val g = game ?: return
+        // A fresh deal nobody has scored in yet isn't a game.
+        if (g.scores.all { it == 0 } && g.result == null && g.tricks.isEmpty()) return
+        val rec = GameRecord(System.currentTimeMillis(), false, g.scores[g.rules.team(0)], themScore(g), g.players, abandoned = true)
+        saveStats(stats.copy(played = stats.played + 1, streak = 0, recent = (listOf(rec) + stats.recent).take(20)))
+    }
 
     private fun saveStats(s: Stats) {
         stats = s

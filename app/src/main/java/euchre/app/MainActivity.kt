@@ -30,6 +30,7 @@ class MainActivity : ComponentActivity() {
                         Screen.GAME -> GameScreen(vm)
                         Screen.SETTINGS -> SettingsScreen(vm)
                         Screen.HELP -> HelpScreen(vm)
+                        Screen.STATS -> StatsScreen(vm)
                     }
                 }
             }

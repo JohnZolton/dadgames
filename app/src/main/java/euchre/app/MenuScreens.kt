@@ -34,6 +34,8 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,7 +74,11 @@ fun HomeScreen(vm: GameViewModel) {
             Text("Euchre", style = MaterialTheme.typography.headlineLarge, color = Palette.text)
             val s = vm.stats
             Text(
-                if (s.played == 0) "Pull up a chair" else "You've won ${s.won} of ${s.played} games",
+                when {
+                    s.played == 0 -> "Pull up a chair"
+                    s.streak >= 2 -> "${s.streak} wins in a row · ${s.winRate}% overall"
+                    else -> "You've won ${s.won} of ${s.played} games (${s.winRate}%)"
+                },
                 color = Palette.textDim, fontSize = 17.sp,
             )
             Spacer(Modifier.height(44.dp))
@@ -84,7 +90,10 @@ fun HomeScreen(vm: GameViewModel) {
                 BigButton("New game", primary = true) { vm.newGame() }
             }
             Spacer(Modifier.height(14.dp))
-            BigButton("Settings", primary = false) { vm.screen = Screen.SETTINGS }
+            Row(Modifier.widthIn(max = 360.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.weight(1f)) { BigButton("Stats", primary = false) { vm.screen = Screen.STATS } }
+                Box(Modifier.weight(1f)) { BigButton("Settings", primary = false) { vm.screen = Screen.SETTINGS } }
+            }
             Spacer(Modifier.height(6.dp))
             TextButton({ vm.screen = Screen.HELP }) { Text("How to play", color = Palette.textDim, fontSize = 17.sp) }
         }
@@ -291,23 +300,112 @@ fun SettingsScreen(vm: GameViewModel) {
             if (r.superEuchre) Stepper("Super euchre points", r.superEuchrePoints, 2..8) { setRules(r.copy(superEuchrePoints = it)) }
         }
 
-        Section("Your record") {
-            val st = vm.stats
-            StatLine("Games won", "${st.won} of ${st.played}")
-            StatLine("Best winning streak", "${st.bestStreak}")
-            StatLine("Hands you called and made", "${st.made} of ${st.called}")
-            StatLine("Times your side euchred them", "${st.euchres}")
-            StatLine("Lone marches", "${st.loners}")
-            TextButton(vm::resetStats, Modifier.padding(horizontal = 6.dp)) { Text("Reset record", color = Palette.textDim) }
+    }
+}
+
+// ---------------------------------------------------------------- stats
+
+@Composable
+fun StatsScreen(vm: GameViewModel) {
+    val s = vm.stats
+    ScreenScaffold("Your stats", { vm.screen = Screen.HOME }) {
+        Spacer(Modifier.height(12.dp))
+        // Win rate ring
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color(0x33000000)).padding(22.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(128.dp), contentAlignment = Alignment.Center) {
+                androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                    val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = 14.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                    val inset = 7.dp.toPx()
+                    val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
+                    val tl = androidx.compose.ui.geometry.Offset(inset, inset)
+                    drawArc(Color(0x26FFFFFF), 0f, 360f, false, tl, arcSize, style = stroke)
+                    if (s.played > 0) drawArc(Palette.gold, -90f, 360f * s.won / s.played, false, tl, arcSize, style = stroke)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(if (s.played == 0) "–" else "${s.winRate}%", color = Palette.text, fontSize = 32.sp, fontWeight = FontWeight.Bold, fontFamily = Serif)
+                    Text("win rate", color = Palette.textDim, fontSize = 13.sp)
+                }
+            }
+            Spacer(Modifier.width(22.dp))
+            Column {
+                BigNumber("${s.won}", "games won")
+                Spacer(Modifier.height(10.dp))
+                BigNumber("${s.played}", "games played")
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        TileRow(
+            Tile("${s.streak}", if (s.streak == 1) "win in a row" else "wins in a row", highlight = s.streak >= 3),
+            Tile("${s.bestStreak}", "best streak"),
+        )
+        TileRow(Tile("${s.hands}", if (s.hands == 1) "hand played" else "hands played"), Tile(ratio(s.made, s.called), "your calls made"))
+        TileRow(Tile("${s.euchres}", "euchres dealt"), Tile("${s.euchredUs}", "times euchred"))
+        TileRow(Tile("${s.marches}", if (s.marches == 1) "march" else "marches"), Tile(if (s.lonersTried == 0) "0" else "${s.lonersMade} of ${s.lonersTried}", "loners made"))
+        TileRow(Tile("${s.pointsFor}", "points for"), Tile("${s.pointsAgainst}", "points against"))
+
+        if (s.recent.isNotEmpty()) {
+            Spacer(Modifier.height(22.dp))
+            Text("RECENT GAMES", color = Palette.gold, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+            Spacer(Modifier.height(8.dp))
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Color(0x33000000)).padding(vertical = 6.dp)) {
+                val fmt = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault())
+                for (r in s.recent) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(34.dp).clip(CircleShape).background(if (r.won) Palette.gold else Color(0x33FFFFFF)),
+                            contentAlignment = Alignment.Center,
+                        ) { Text(if (r.won) "W" else "L", color = if (r.won) Color(0xFF2A1F05) else Palette.text, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("${r.us} – ${r.them}" + if (r.abandoned) "  (left early)" else "", color = Palette.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                            Text(fmt.format(java.util.Date(r.time)) + if (r.players == 3) " · cutthroat" else "", color = Palette.textDim, fontSize = 14.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+        var confirm by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            TextButton({ if (confirm) { vm.resetStats(); confirm = false } else confirm = true }) {
+                Text(if (confirm) "Tap again to erase all stats" else "Reset stats", color = if (confirm) Palette.red else Palette.textDim, fontSize = 16.sp)
+            }
         }
     }
 }
 
+private fun ratio(a: Int, b: Int) = if (b == 0) "0" else "$a of $b"
+
+private class Tile(val value: String, val label: String, val highlight: Boolean = false)
+
 @Composable
-private fun StatLine(label: String, value: String) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(label, color = Palette.textDim, fontSize = 17.sp, modifier = Modifier.weight(1f))
-        Text(value, color = Palette.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+private fun BigNumber(value: String, label: String) {
+    Row(verticalAlignment = Alignment.Bottom) {
+        Text(value, color = Palette.text, fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = Serif)
+        Spacer(Modifier.width(8.dp))
+        Text(label, color = Palette.textDim, fontSize = 16.sp, modifier = Modifier.padding(bottom = 5.dp))
+    }
+}
+
+@Composable
+private fun TileRow(a: Tile, b: Tile) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        for (t in listOf(a, b)) {
+            Column(
+                Modifier.weight(1f).clip(RoundedCornerShape(18.dp))
+                    .background(if (t.highlight) Palette.gold else Color(0x33000000))
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+            ) {
+                val ink = if (t.highlight) Color(0xFF2A1F05) else Palette.text
+                Text(t.value, color = ink, fontSize = 26.sp, fontWeight = FontWeight.Bold, fontFamily = Serif)
+                Text(t.label, color = if (t.highlight) ink else Palette.textDim, fontSize = 15.sp)
+            }
+        }
     }
 }
 
