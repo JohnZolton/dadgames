@@ -83,9 +83,10 @@ fun PlayingCard(
                 Text(card.suit.glyph, color = ink, fontSize = (width * if (card.rank == Rank.ACE) 0.62f else 0.5f).sp(), style = centeredGlyph)
             }
         }
-        // Small mirrored index bottom-right.
-        Column(Modifier.align(Alignment.BottomEnd).padding(end = width * 0.06f, bottom = width * 0.04f).rotate(180f), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(card.rank.short, color = ink, fontSize = (width * 0.2f).sp(), fontWeight = FontWeight.Bold, style = centeredGlyph)
+        // Small upright index bottom-right. Not mirrored: on a screen a rotated 6 reads as 9 and 10 as "01".
+        Row(Modifier.align(Alignment.BottomEnd).padding(end = width * 0.06f, bottom = width * 0.04f), verticalAlignment = Alignment.CenterVertically) {
+            Text(card.rank.short, color = ink, fontSize = (width * 0.18f).sp(), fontWeight = FontWeight.Bold, style = centeredGlyph)
+            Text(card.suit.glyph, color = ink, fontSize = (width * 0.16f).sp(), style = centeredGlyph)
         }
         if (dim) Box(Modifier.fillMaxSize().background(Color(0x66000000)))
     }

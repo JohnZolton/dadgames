@@ -253,12 +253,12 @@ fun TileRow(a: Tile, b: Tile) {
     }
 }
 
+/** Big number with its label underneath (stacked so labels never wrap beside the number at 360 dp). */
 @Composable
 fun BigNumber(value: String, label: String) {
-    Row(verticalAlignment = Alignment.Bottom) {
-        Text(value, color = P.text, fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = Serif)
-        Spacer(Modifier.width(8.dp))
-        Text(label, color = P.textDim, fontSize = 16.sp, modifier = Modifier.padding(bottom = 5.dp))
+    Column {
+        Text(value, color = P.text, fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = Serif, maxLines = 1)
+        Text(label, color = P.textDim, fontSize = 15.sp, maxLines = 1)
     }
 }
 
