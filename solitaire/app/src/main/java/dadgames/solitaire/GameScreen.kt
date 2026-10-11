@@ -26,6 +26,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,9 +59,15 @@ fun GameScreen(vm: GameViewModel) {
         Column(Modifier.fillMaxSize().systemBarsPadding()) {
             Header(vm, g)
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                Board(vm, g)
+                // Banners and the auto-complete button take space from the board, so long columns squeeze
+                // up above them instead of being covered. [review]
+                val density = androidx.compose.ui.platform.LocalDensity.current.density
+                var overlayPx by remember { mutableIntStateOf(0) }
+                Board(vm, g, reserveBottom = overlayPx / density)
                 Column(
-                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                        .onSizeChanged { overlayPx = it.height }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     AnimatedVisibility(g.canAutoComplete && !vm.autoCompleting, enter = fadeIn() + slideInVertically { it / 2 }, exit = fadeOut()) {
@@ -131,7 +142,7 @@ private fun BottomBar(vm: GameViewModel, g: Klondike) {
         BarButton(Icons.settings, "Settings", Color(0xFF5AAEEA), Modifier.weight(1f)) { vm.go(Screen.SETTINGS) }
         BarButton(Icons.calendar, "Daily", GOLD, Modifier.weight(1f)) { vm.go(Screen.DAILY) }
         BarButton(Icons.bulb, "Hint", Color(0xFFFFE07A), Modifier.weight(1f), enabled = !g.won && !vm.autoCompleting) { vm.requestHint() }
-        BarButton(Icons.add, "New game", Color.White, Modifier.weight(1.25f)) { vm.newGame() }
+        BarButton(Icons.add, "New game", Color.White, Modifier.weight(1.25f)) { vm.requestNewGame() }
     }
 }
 
@@ -156,6 +167,7 @@ private fun WinPanel(vm: GameViewModel, g: Klondike) {
         Text("points", color = P.textDim, fontSize = 16.sp)
         Spacer(Modifier.height(12.dp))
         when {
+            info?.replay == true -> Text("Replay of a solved daily: not counted in your stats", color = P.textDim, fontSize = 16.sp, textAlign = TextAlign.Center)
             info?.newBest == true -> Text("New best score!", color = P.accent, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             info?.rank != null -> Text("Number ${info.rank + 1} in your top 10", color = P.accent, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
         }
@@ -175,8 +187,8 @@ private fun WinPanel(vm: GameViewModel, g: Klondike) {
             )
             Spacer(Modifier.height(6.dp))
         }
-        val s = vm.stats
-        Text("Won ${s.won} of ${s.played} games (${s.winRate}%)", color = P.textDim, fontSize = 15.sp)
+        val s = vm.statsFor(g.draw)
+        Text("Draw ${g.draw}: ${s.won} of ${s.played} won (${s.winRate}%)", color = P.textDim, fontSize = 15.sp, textAlign = TextAlign.Center)
         Spacer(Modifier.height(18.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (g.daily != null) SecondaryButton("Calendar", Modifier.weight(1f)) { vm.go(Screen.DAILY) }
@@ -201,3 +213,17 @@ fun dayLabel(key: String): String = LocalDate.parse(key).format(DateTimeFormatte
 /** A text size that ignores the system font scale, for rows whose width is fixed by the screen. */
 @Composable
 fun fixedSp(dp: Float): androidx.compose.ui.unit.TextUnit = with(androidx.compose.ui.platform.LocalDensity.current) { dp.dp.toSp() }
+
+/** "Start a new game? This one will count as a loss." [review] */
+@Composable
+fun LeaveConfirm(vm: GameViewModel) {
+    ResultPanel("New game?") {
+        Text(vm.leaveText, color = P.text, fontSize = 18.sp, textAlign = TextAlign.Center, lineHeight = 25.sp)
+        Spacer(Modifier.height(20.dp))
+        // Stacked full width so neither label can clip at large font sizes.
+        Column(Modifier.widthIn(max = 300.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            PrimaryButton("Keep playing", Modifier.fillMaxWidth()) { vm.confirmLeaveNo() }
+            SecondaryButton("New game", Modifier.fillMaxWidth()) { vm.confirmLeaveYes() }
+        }
+    }
+}

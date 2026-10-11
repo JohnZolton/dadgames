@@ -45,6 +45,8 @@ data class AppSettings(
     val cardBack: Int = 0,
     /** Stock and waste on the left, foundations on the right. */
     val leftHanded: Boolean = false,
+    /** How games are scored (his old app's formula by default). Applies from the next game. */
+    val scoring: solitaire.core.ScoringMode = solitaire.core.ScoringMode.OLD_APP,
 )
 
 class Background(val name: String, val palette: GamePalette)

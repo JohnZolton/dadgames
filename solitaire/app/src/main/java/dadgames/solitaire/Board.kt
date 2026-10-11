@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import dadgames.cards.Card
 import dadgames.ui.EmptySlot
 import dadgames.ui.P
@@ -147,14 +149,16 @@ private fun overlap(a: Rect, b: Rect): Float {
 // ---------------------------------------------------------------- board
 
 @Composable
-fun Board(vm: GameViewModel, g: Klondike, modifier: Modifier = Modifier) {
+fun Board(vm: GameViewModel, g: Klondike, modifier: Modifier = Modifier, reserveBottom: Float = 0f) {
     val settings = vm.settings
     val back = cardBacks.getOrElse(settings.cardBack) { cardBacks[0] }
     val density = LocalDensity.current.density
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val d = remember(maxWidth, maxHeight, settings.leftHanded, g.draw) { Dims(maxWidth.value, maxHeight.value, settings.leftHanded, g.draw) }
+        val d = remember(maxWidth, maxHeight, settings.leftHanded, g.draw, reserveBottom) {
+            Dims(maxWidth.value, maxHeight.value - reserveBottom, settings.leftHanded, g.draw)
+        }
         val lay = layout(g, d)
         val layState = rememberUpdatedState(lay)
         val cw = d.cw.dp
@@ -254,6 +258,7 @@ fun Board(vm: GameViewModel, g: Klondike, modifier: Modifier = Modifier) {
             val pulse by rememberInfiniteTransition(label = "hint").animateFloat(0.4f, 1f, infiniteRepeatable(tween(600), RepeatMode.Reverse), label = "hint")
             Box(
                 Modifier.offset(hintRect.left.dp - 3.dp, hintRect.top.dp - 3.dp).size(hintRect.width.dp + 6.dp, hintRect.height.dp + 6.dp).zIndex(3000f)
+                    .semantics { contentDescription = "Hint target: ${hint?.text ?: ""}" }
                     .border(3.dp, GOLD.copy(alpha = pulse), RoundedCornerShape(d.cw * 0.12f))
             )
         }
@@ -416,6 +421,8 @@ private fun CardSprite(
             val sx = (shake?.value ?: 0f) * density
             IntOffset((anim.value.x + dx + sx).roundToInt(), (anim.value.y + dy).roundToInt())
         }
+        // Card names for TalkBack and scripted tests; hinted cards say so. [BEST_PRACTICES #12r]
+        .semantics { contentDescription = (if (p.faceUp) p.card.spoken else "Face-down card") + if (glow) ", hint" else "" }
         .graphicsLayer {
             rotationY = if (flip <= 90f) flip else flip - 180f
             cameraDistance = 14f * density

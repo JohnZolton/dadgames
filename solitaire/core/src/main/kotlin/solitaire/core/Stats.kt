@@ -33,14 +33,15 @@ data class Stats(
         return if (i < 10) i else null
     }
 
-    fun recordWin(score: Int, seconds: Long, moves: Int, date: String, epochMs: Long, daily: Boolean): Stats {
+    /** [ranked] = false keeps the win out of the best score and top 10 (games scored another way). */
+    fun recordWin(score: Int, seconds: Long, moves: Int, date: String, epochMs: Long, daily: Boolean, ranked: Boolean = true): Stats {
         val s = streak + 1
         val entry = ScoreEntry(score, seconds, date, moves)
-        val pos = rankOf(score)
+        val pos = if (ranked) rankOf(score) else null
         val newTop = if (pos == null) top else (top.take(pos) + entry + top.drop(pos)).take(10)
         return copy(
             won = won + 1, played = played + 1,
-            bestScore = maxOf(bestScore, score),
+            bestScore = if (ranked) maxOf(bestScore, score) else bestScore,
             leastMoves = if (leastMoves == 0) moves else minOf(leastMoves, moves),
             bestTime = if (bestTime == 0L) seconds else minOf(bestTime, seconds),
             totalTime = totalTime + seconds,

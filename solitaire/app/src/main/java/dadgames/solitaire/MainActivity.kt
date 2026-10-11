@@ -23,7 +23,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val palette = backgrounds.getOrElse(vm.settings.background) { backgrounds[0] }.palette
             DadTheme(palette) {
-                BackHandler(enabled = vm.screen != Screen.HOME) { vm.back() }
+                BackHandler(enabled = vm.screen != Screen.HOME || vm.confirmLeave != null) {
+                    if (vm.confirmLeave != null) vm.confirmLeaveNo() else vm.back()
+                }
                 Crossfade(vm.screen, animationSpec = tween(200), label = "screen") { s ->
                     when (s) {
                         Screen.HOME -> HomeScreen(vm)
@@ -33,6 +35,7 @@ class MainActivity : ComponentActivity() {
                         Screen.DAILY -> DailyScreen(vm)
                     }
                 }
+                if (vm.confirmLeave != null) LeaveConfirm(vm)
             }
         }
     }

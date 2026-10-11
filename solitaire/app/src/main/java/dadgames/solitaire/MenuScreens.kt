@@ -55,7 +55,9 @@ import dadgames.ui.TileRow
 import dadgames.ui.Toggle
 import dadgames.ui.menuBackground
 import solitaire.core.Daily
-import solitaire.core.Scoring
+import solitaire.core.OldAppScoring
+import solitaire.core.ScoringMode
+import solitaire.core.WindowsScoring
 import solitaire.core.clock
 import solitaire.core.longClock
 import java.time.LocalDate
@@ -93,7 +95,7 @@ fun HomeScreen(vm: GameViewModel) {
             if (vm.canResume) {
                 BigButton("Continue game", primary = true) { vm.resume() }
                 Spacer(Modifier.height(14.dp))
-                BigButton("New game", primary = false) { vm.newGame() }
+                BigButton("New game", primary = false) { vm.requestNewGame() }
             } else {
                 BigButton("New game", primary = true) { vm.newGame() }
             }
@@ -164,23 +166,41 @@ fun SettingsScreen(vm: GameViewModel) {
                 Icon(Icons.right, null, tint = P.textDim)
             }
         }
-        Section("Scoring", "Windows standard scoring, like your old app.") {
-            val rows = listOf(
-                "Card from the waste to a column" to "+${Scoring.WASTE_TO_TABLEAU}",
-                "Card up to a foundation" to "+${Scoring.TO_FOUNDATION}",
-                "Turning over a column card" to "+${Scoring.TURN_OVER}",
-                "Card back down from a foundation" to "${Scoring.FOUNDATION_TO_TABLEAU}",
-                "Draw 1: turning the stock over" to "${Scoring.RECYCLE_DRAW1}",
-                "Draw 3: each turn-over after the third" to "${Scoring.RECYCLE_DRAW3}",
-                "Every 10 seconds" to "-${Scoring.TIME_PENALTY}",
-            )
+        Section("Scoring", "Starts with your next new game.") {
+            Choice("Scoring", ScoringMode.entries.map { it.label to it }, s.scoring) { vm.updateSettings(s.copy(scoring = it)) }
+            val rows = when (s.scoring) {
+                ScoringMode.OLD_APP -> listOf(
+                    "Card from the waste to a column" to "+${OldAppScoring.WASTE_TO_TABLEAU}",
+                    "Card from the waste to a foundation" to "+${OldAppScoring.WASTE_TO_FOUNDATION}",
+                    "Card from a column to a foundation" to "+${OldAppScoring.TABLEAU_TO_FOUNDATION}",
+                    "Turning over a column card" to "+${OldAppScoring.TURN_OVER}",
+                    "Card back down from a foundation" to "${OldAppScoring.FOUNDATION_TO_TABLEAU}",
+                    "Each undo" to "${OldAppScoring.UNDO}",
+                    "Draw 1: turning the stock over" to "${OldAppScoring.DECK_PASS}",
+                    "Draw 3: each turn-over after the third" to "${OldAppScoring.DECK_PASS}",
+                )
+                ScoringMode.WINDOWS -> listOf(
+                    "Card from the waste to a column" to "+${WindowsScoring.WASTE_TO_TABLEAU}",
+                    "Card up to a foundation" to "+${WindowsScoring.TO_FOUNDATION}",
+                    "Turning over a column card" to "+${WindowsScoring.TURN_OVER}",
+                    "Card back down from a foundation" to "${WindowsScoring.FOUNDATION_TO_TABLEAU}",
+                    "Draw 1: turning the stock over" to "${WindowsScoring.RECYCLE_DRAW1}",
+                    "Draw 3: each turn-over after the third" to "${WindowsScoring.RECYCLE_DRAW3}",
+                    "Every 10 seconds" to "${WindowsScoring.TIME_PENALTY}",
+                )
+            }
             for ((a, b) in rows) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)) {
                 Text(a, color = P.text, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(10.dp))
                 Text(b, color = P.accent, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
             Text(
-                "Win bonus: 700,000 divided by your time in seconds, for wins over 30 seconds. Wins faster than 2:30 all get the 2:30 bonus (4666). " +
-                    "The stock can be turned over as often as you like. Undo puts the cards and points back, but not the time.",
+                when (s.scoring) {
+                    ScoringMode.OLD_APP -> "Scores like your old app. No points lost for time. Win bonus: 20 times your score, divided by your time in seconds. " +
+                        "Undo takes the move's points back and costs 25 more."
+                    ScoringMode.WINDOWS -> "Windows scoring. Win bonus: 700,000 divided by your time in seconds, for wins over 30 seconds. " +
+                        "Undo takes the move's points back. Windows scores don't go into your top 10, which uses your old app's scoring."
+                } + " The score never drops below zero, and the stock can be turned over as often as you like.",
                 color = P.textDim, fontSize = 14.sp, lineHeight = 19.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
@@ -199,9 +219,16 @@ private fun PickerLabel(label: String, value: String) {
 
 @Composable
 fun StatsScreen(vm: GameViewModel) {
-    val s = vm.stats
+    var mode by rememberSaveable { mutableStateOf(vm.settings.draw) }
+    val s = vm.statsFor(mode)
     ScreenScaffold("Statistics", vm::back) {
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
+        // Draw 1 holds his history from the old app; Draw 3 is counted separately.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
+            dadgames.ui.Chip("Draw 1", mode == 1) { mode = 1 }
+            dadgames.ui.Chip("Draw 3", mode == 3) { mode = 3 }
+        }
+        Spacer(Modifier.height(10.dp))
         // Local headline: numbers with their labels underneath, which fits 360 dp at any font size.
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(P.wash).padding(18.dp),
@@ -220,7 +247,7 @@ fun StatsScreen(vm: GameViewModel) {
         Spacer(Modifier.height(10.dp))
         TileRow(Tile(if (s.bestScore == 0) "–" else "${s.bestScore}", "best score"), Tile(if (s.leastMoves == 0) "–" else "${s.leastMoves}", "least moves"))
         TileRow(Tile(if (s.bestTime == 0L) "–" else clock(s.bestTime), "best time"), Tile("${s.streak}", if (s.streak == 1) "win in a row" else "wins in a row", highlight = s.streak >= 3))
-        TileRow(Tile("${s.bestStreak}", "best streak"), Tile("${vm.daily.solved.size}", "dailies solved"))
+        TileRow(Tile("${s.bestStreak}", "best streak"), if (mode == 1) Tile("${vm.daily.solved.size}", "dailies solved") else Tile("${s.played - s.won}", "games lost"))
         Row(
             Modifier.fillMaxWidth().padding(vertical = 5.dp).clip(RoundedCornerShape(18.dp)).background(P.wash).padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -256,7 +283,7 @@ fun StatsScreen(vm: GameViewModel) {
 
         Spacer(Modifier.height(20.dp))
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            ConfirmTextButton("Reset statistics", "Tap again to erase all statistics") { vm.resetStats() }
+            ConfirmTextButton("Reset Draw $mode statistics", "Tap again to erase Draw $mode statistics") { vm.resetStats(mode) }
         }
     }
 }
