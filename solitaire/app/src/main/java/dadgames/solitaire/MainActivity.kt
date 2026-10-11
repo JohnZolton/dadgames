@@ -3,21 +3,17 @@ package dadgames.solitaire
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.activity.viewModels
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import dadgames.ui.DadTheme
-import dadgames.ui.GamePalette
-import dadgames.ui.P
-import dadgames.ui.menuBackground
 
 class MainActivity : ComponentActivity() {
+    private val vm: GameViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
@@ -25,11 +21,26 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         setContent {
-            DadTheme(GamePalette.Felt) {
-                Box(Modifier.fillMaxSize().menuBackground().systemBarsPadding(), contentAlignment = Alignment.Center) {
-                    Text("Solitaire", style = MaterialTheme.typography.headlineLarge, color = P.text)
+            val palette = backgrounds.getOrElse(vm.settings.background) { backgrounds[0] }.palette
+            DadTheme(palette) {
+                BackHandler(enabled = vm.screen != Screen.HOME || vm.confirmLeave != null) {
+                    if (vm.confirmLeave != null) vm.confirmLeaveNo() else vm.back()
                 }
+                Crossfade(vm.screen, animationSpec = tween(200), label = "screen") { s ->
+                    when (s) {
+                        Screen.HOME -> HomeScreen(vm)
+                        Screen.GAME -> GameScreen(vm)
+                        Screen.SETTINGS -> SettingsScreen(vm)
+                        Screen.STATS -> StatsScreen(vm)
+                        Screen.DAILY -> DailyScreen(vm)
+                    }
+                }
+                if (vm.confirmLeave != null) LeaveConfirm(vm)
             }
         }
     }
+
+    // The clock only runs while the game is on screen. [timer pauses in the background]
+    override fun onStart() { super.onStart(); vm.onForeground(true) }
+    override fun onStop() { vm.onForeground(false); super.onStop() }
 }
