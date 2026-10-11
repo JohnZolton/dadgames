@@ -24,7 +24,9 @@ Don't fix anything; report.
 5. Robustness: rapid taps, back button everywhere, app backgrounded mid-animation, end-of-game edge cases.
 
 ## Devices
-Your own emulator only (given in your task): `~/dadgames/tools/emu up <AVD> <port>`, `adb -s emulator-<port>`.
+Your own emulator only (given in your task, a `dad-<game>-review` AVD, separate from the builder's so
+your test games never end up in the builder's saved data): `~/dadgames/tools/emu up <AVD> <port>`,
+`adb -s emulator-<port>`.
 Never touch other emulators or real phones. No `sleep` (use `timeout N tail -f /dev/null`). Shut the
 emulator down when finished.
 
