@@ -68,5 +68,11 @@ Origin of each rule in brackets.
    emulator, and never drive a real phone without checking it's free. [Euchre: shared emulator got hijacked]
 28. All apps are signed with the same debug keystore, so new builds install over old ones and keep his saves.
 
+## Releases (dad updates through Obtainium from GitHub releases)
+29. Every release bumps the app's `versionCode` **and** `versionName`; Obtainium compares versions.
+30. One repo, one release per app version: tag `<app>-v<version>` (e.g. `blocks-v1.0.3`), title
+    `<App> <version>`, asset `<App>-<version>.apk` (release build). Obtainium filters by title/APK name.
+31. Never change an app's `applicationId` or signing key after it's on his phone, or updates break.
+
 ## Process
-29. Write it down: when a bug or a review finding teaches something general, add a rule here.
+32. Write it down: when a bug or a review finding teaches something general, add a rule here.
