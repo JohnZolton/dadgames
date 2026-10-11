@@ -492,7 +492,10 @@ private fun Board(
 
     // For TalkBack (and scripted tests): where the hint shadow is.
     val hintCell = hint?.let { g.preview(it.slot, it.anchor)?.cells?.cells()?.firstOrNull() }
-    val boardDescription = "Board" + (hintCell?.let { ", hint at row ${rowOf(it) + 1} column ${colOf(it) + 1}" } ?: "")
+    val hintShape = hint?.let { g.tray.getOrNull(it.slot)?.takeIf { id -> id >= 0 }?.let { id -> Shapes[id] } }
+    val boardDescription = "Board" + (if (hint != null && hintCell != null && hintShape != null)
+        ", hint at row ${rowOf(hintCell) + 1} column ${colOf(hintCell) + 1}; piece ${hint.slot + 1}, ${hintShape.rows} by ${hintShape.cols}, " +
+            "top left row ${rowOf(hint.anchor) + 1} column ${colOf(hint.anchor) + 1}" else "")
     Box(Modifier.size(boardSize).semantics { contentDescription = boardDescription }) {
         Canvas(
             Modifier.fillMaxSize()
