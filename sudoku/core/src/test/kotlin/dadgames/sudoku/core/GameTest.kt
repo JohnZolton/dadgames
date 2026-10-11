@@ -223,6 +223,20 @@ class GameTest {
         }
     }
 
+    /** The message area under the board fits about 200 characters at 16sp on his 411 dp screen. */
+    @Test fun hintReasonsFitTheMessageArea() {
+        var longest = ""
+        for (t in Technique.entries) if (t.level > 0) for (place in listOf(Step(Technique.HIDDEN_SINGLE, 0, 4, unit = 9), Step(Technique.NAKED_SINGLE, 0, 4))) {
+            for (n in 1..2) {
+                val elim = Step(t, eliminations = listOf(0 to 1), unit = 9, cells = listOf(0, 9, 18, 27), digits = listOf(1, 2, 3, 4))
+                val s = Hints.explain(place, List(n) { elim })
+                if (s.length > longest.length) longest = s
+            }
+        }
+        println("longest hint (${longest.length}): $longest")
+        assertTrue(longest.length <= 200)
+    }
+
     @Test fun jsonRoundTripKeepsEverything() {
         var g = game().toggleNote(c0, 4).game.enter(empties[1], wrong(empties[1]), on).game.withTime(123_456)
         g = g.copy(daily = "2026-10-11")

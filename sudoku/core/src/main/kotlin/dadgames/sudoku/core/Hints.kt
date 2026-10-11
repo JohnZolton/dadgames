@@ -102,7 +102,7 @@ object Hints {
     }
 
     fun explain(place: Step, before: List<Step>): String {
-        val p = placementText(place)
+        val p = if (before.isEmpty() || place.technique == Technique.HIDDEN_SINGLE) placementText(place) else "Only ${place.placeDigit} fits here."
         return when (before.size) {
             0 -> p
             1 -> "${eliminationText(before[0])} Then: ${p.replaceFirstChar { it.lowercase() }}"
