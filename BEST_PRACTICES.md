@@ -48,6 +48,15 @@ Origin of each rule in brackets.
     grade by how much hard reasoning a puzzle needs, not only the hardest single step. [Sudoku review]
 12j. Kill-and-relaunch must restore the **screen** too (in a game → back in that game), not only the data.
     [Sudoku review]
+12k. On screens, don't mirror small indices: a rotated 6 reads as 9 and 10 as "01". [Blackjack]
+12l. Lay out fixed-position tables from the bottom up (controls, then the player's cards, then the
+    opponent) so nothing collides, and cap font scaling (≈1.1x) on the play surface itself. [Blackjack]
+12m. On resume, place everything where it belongs (cards, totals, chips); don't replay deal animations.
+    A card's total updates when the card lands, not when it leaves the deck. [Blackjack]
+12n. Count large numbers (balances) with Long/whole-number animations; a Float can't hold 559,864,578.
+    [Blackjack]
+12o. Debug-only intent hooks (stack the deck, set the balance, jump to a state) make screenshots of
+    rare states quick; release builds must ignore them. [Blackjack]
 
 ## Interaction and animation
 13. **Support both tap and drag/swipe** for moving pieces/cards. [Euchre]
