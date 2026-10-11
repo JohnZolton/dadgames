@@ -167,7 +167,7 @@ fun GameScreen(vm: GameViewModel) {
             !shownToday && vm.startToday > 0 && g.score > vm.startToday -> { shownToday = true; "New best today!" }
             else -> null
         }
-        if (text != null) { delay(300); message = text; delay(2200); if (message == text) message = null }
+        if (text != null) { delay(300); message = text; delay(3000); if (message == text) message = null }
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().woodBackground()) {
@@ -324,18 +324,19 @@ private fun TopBar(vm: GameViewModel, g: GameState) {
                 .border(2.dp, Color(0x55FFE2B0), RoundedCornerShape(12.dp))
                 .semantics { contentDescription = "Score ${g.score}" },
             contentAlignment = Alignment.Center,
-        ) { Text("$shown", color = Color(0xFFFFE9C9), fontSize = 32.sp, fontWeight = FontWeight.Bold, maxLines = 1) }
+        ) { Text("$shown", color = Color(0xFFFFE9C9), fontSize = 32.fixedSp, fontWeight = FontWeight.Bold, maxLines = 1) }
         Spacer(Modifier.width(10.dp))
-        if (g.mode == Mode.CLASSIC) TodayBox(vm, g) else GemBox(g)
+        if (g.mode == Mode.CLASSIC) TodayBox(vm, g, shown) else GemBox(g)
         Spacer(Modifier.weight(1f))
         WoodIconButton(Icon.GEAR, "Settings") { vm.openSettings(Screen.GAME) }
     }
 }
 
 @Composable
-private fun TodayBox(vm: GameViewModel, g: GameState) {
+private fun TodayBox(vm: GameViewModel, g: GameState, shownScore: Int) {
     val beat = g.score > vm.startToday
-    val value = maxOf(vm.startToday, g.score)
+    // Follows the counting-up score so the two boxes agree.
+    val value = maxOf(vm.startToday, shownScore)
     Box(contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier.width(104.dp).height(56.dp).clip(RoundedCornerShape(12.dp))
@@ -344,8 +345,8 @@ private fun TodayBox(vm: GameViewModel, g: GameState) {
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
         ) {
             val ink = if (beat) Color(0xFF4A2A06) else Color(0xFFFFEBD2)
-            Text("TODAY", color = ink, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, lineHeight = 13.sp, maxLines = 1)
-            Text("$value", color = ink, fontSize = 24.sp, fontWeight = FontWeight.Bold, lineHeight = 26.sp, maxLines = 1)
+            Text("TODAY", color = ink, fontSize = 12.fixedSp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, lineHeight = 13.fixedSp, maxLines = 1)
+            Text("$value", color = ink, fontSize = 24.fixedSp, fontWeight = FontWeight.Bold, lineHeight = 26.fixedSp, maxLines = 1)
         }
         // Crown sits on the top edge, like Woodoku's.
         IconGlyph(Icon.CROWN, 22.dp, if (beat) Wood.glow else Wood.crown, Modifier.offset(y = (-15).dp))
@@ -361,7 +362,7 @@ private fun GemBox(g: GameState) {
     ) {
         IconGlyph(Icon.GEM, 26.dp, Wood.gem)
         Spacer(Modifier.width(6.dp))
-        Text("${g.gemsCollected}/${g.gemsTotal}", color = Color(0xFFFFEBD2), fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text("${g.gemsCollected}/${g.gemsTotal}", color = Color(0xFFFFEBD2), fontSize = 24.fixedSp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 
@@ -376,11 +377,14 @@ private fun StatusLine(vm: GameViewModel, g: GameState, selected: Int, tapAnchor
         vm.hint != null -> "Hint: tap the glowing shadow" to true
         g.mode == Mode.DAILY -> "Clear the lines holding gems" to false
         g.moves == 0 -> "Drag a piece onto the board" to false
+        // Once a record falls it stays on screen for the rest of the game.
+        g.score > vm.startEver -> "New best ever!" to true
+        g.score > vm.startToday -> "New best today!" to false
         else -> "" to false
     }
     Box(Modifier.fillMaxWidth().height(40.dp), contentAlignment = Alignment.Center) {
         Text(
-            text, color = if (strong) Color(0xFFFFE08A) else Color(0xE6FFF1DD), fontSize = if (strong) 20.sp else 18.sp,
+            text, color = if (strong) Color(0xFFFFE08A) else Color(0xE6FFF1DD), fontSize = if (strong) 20.fixedSp else 18.fixedSp,
             fontWeight = if (strong) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, softWrap = false, textAlign = TextAlign.Center,
         )
     }
@@ -507,7 +511,7 @@ private fun PointsFloater(fx: MoveFx, framePx: Float) {
         Text(
             "+${fx.points}",
             color = if (big) Color(0xFFFFE08A) else Color(0xFFFFF4E0),
-            fontSize = if (big) 34.sp else 24.sp, fontWeight = FontWeight.Black,
+            fontSize = if (big) 34.fixedSp else 24.fixedSp, fontWeight = FontWeight.Black,
             modifier = Modifier
                 .offset {
                     val rise = t.value * 50.dp.toPx()
@@ -643,7 +647,7 @@ private fun EndPanel(vm: GameViewModel, g: GameState) {
                 MiniStat("Best ever", vm.highScores.ever)
             }
             Spacer(Modifier.height(10.dp))
-            Text("${g.cellsCleared} blocks cleared · biggest combo ${g.bestCombo}", color = P.textDim, fontSize = 15.sp, textAlign = TextAlign.Center)
+            Text("${g.cellsCleared} blocks cleared\nBiggest combo ${g.bestCombo}", color = P.textDim, fontSize = 15.sp, textAlign = TextAlign.Center)
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SecondaryButton("Menu", Modifier.weight(0.8f)) { vm.leaveGame() }

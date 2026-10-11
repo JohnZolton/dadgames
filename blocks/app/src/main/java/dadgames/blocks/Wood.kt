@@ -172,3 +172,7 @@ fun WoodIconButton(icon: Icon, description: String, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) { IconGlyph(icon, 30.dp, Color(0xFF5B2A12)) }
 }
+
+/** Text size in dp that ignores the system font scale, for text inside fixed boxes and cells. [BEST_PRACTICES #12a] */
+val Int.fixedSp: androidx.compose.ui.unit.TextUnit
+    @Composable get() = with(androidx.compose.ui.platform.LocalDensity.current) { this@fixedSp.dp.toSp() }

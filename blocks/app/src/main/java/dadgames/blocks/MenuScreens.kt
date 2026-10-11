@@ -99,7 +99,7 @@ fun HomeScreen(vm: GameViewModel) {
             Spacer(Modifier.height(22.dp))
             val c = vm.classic
             if (vm.canResume && c != null) {
-                BigButton("Continue game · ${c.score}", primary = true) { vm.resume() }
+                ContinueButton(c.score) { vm.resume() }
                 Spacer(Modifier.height(12.dp))
                 BigButton("New game", primary = false) { vm.newGame() }
             } else {
@@ -141,8 +141,8 @@ private fun HighScoresCard(vm: GameViewModel) {
         Row(Modifier.fillMaxWidth()) {
             for ((label, v) in listOf("Today" to hs.todayBest(d), "This week" to hs.weekBest(d), "This month" to hs.monthBest(d), "This year" to hs.yearBest(d))) {
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(label, color = cardInkDim, fontSize = 13.sp, maxLines = 1, softWrap = false)
-                    Text("$v", color = cardInk, fontSize = 25.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text(label, color = cardInkDim, fontSize = 13.fixedSp, maxLines = 1, softWrap = false)
+                    Text("$v", color = cardInk, fontSize = 25.fixedSp, fontWeight = FontWeight.Bold, maxLines = 1)
                 }
             }
         }
@@ -205,8 +205,8 @@ fun Milestones(wins: Int, onCard: Boolean = false) {
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
                 ) {
                     val ink = if (done) Color(0xFF4A2A06) else Color(0xFFFFEBD2)
-                    Text("$m", color = ink, fontSize = 20.sp, fontWeight = FontWeight.Bold, style = centeredGlyph)
-                    Text(if (m == 1) "WIN" else "WINS", color = ink, fontSize = 10.sp, fontWeight = FontWeight.Bold, style = centeredGlyph)
+                    Text("$m", color = ink, fontSize = 20.fixedSp, fontWeight = FontWeight.Bold, style = centeredGlyph)
+                    Text(if (m == 1) "WIN" else "WINS", color = ink, fontSize = 10.fixedSp, fontWeight = FontWeight.Bold, style = centeredGlyph)
                 }
             }
         }
@@ -239,7 +239,7 @@ fun DailyScreen(vm: GameViewModel) {
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth()) {
                 for (d in listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")) {
-                    Text(d, color = cardInkDim, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                    Text(d, color = cardInkDim, fontSize = 13.fixedSp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
                 }
             }
             Spacer(Modifier.height(4.dp))
@@ -292,7 +292,7 @@ private fun MonthArrow(glyph: String, description: String, enabled: Boolean, onC
     Box(
         Modifier.size(48.dp).clip(CircleShape).clickable(enabled = enabled, onClick = onClick).semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
-    ) { Text(glyph, color = if (enabled) cardInk else cardInk.copy(alpha = 0.25f), fontSize = 34.sp, style = centeredGlyph) }
+    ) { Text(glyph, color = if (enabled) cardInk else cardInk.copy(alpha = 0.25f), fontSize = 34.fixedSp, style = centeredGlyph) }
 }
 
 @Composable
@@ -324,7 +324,7 @@ private fun DayCell(vm: GameViewModel, day: LocalDate, today: LocalDate, sel: Lo
             else -> cardInk
         }
         Text(
-            "${day.dayOfMonth}", color = ink, fontSize = 19.sp, fontWeight = if (isSel || isToday || won) FontWeight.Bold else FontWeight.Normal,
+            "${day.dayOfMonth}", color = ink, fontSize = 19.fixedSp, fontWeight = if (isSel || isToday || won) FontWeight.Bold else FontWeight.Normal,
             style = centeredGlyph, modifier = if (won) Modifier.padding(bottom = 10.dp) else Modifier,
         )
         if (won) IconGlyph(Icon.CHECK, 14.dp, Color(0xFF4A2A06), Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp))
@@ -354,9 +354,9 @@ fun SettingsScreen(vm: GameViewModel) {
             }
         }
         Section("Records", note = "Each needs two taps. Your best scores were brought over from Woodoku.") {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                 ConfirmTextButton("Reset stats", "Tap again to reset stats") { vm.resetStats() }
-                ConfirmTextButton("Reset high scores", "Tap again to reset") { vm.resetHighScores() }
+                ConfirmTextButton("Reset high scores", "Tap again to reset high scores") { vm.resetHighScores() }
             }
         }
         Spacer(Modifier.height(20.dp))
@@ -438,6 +438,20 @@ fun StatsScreen(vm: GameViewModel) {
                     Text("${r.score}", color = P.text, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = Serif, maxLines = 1)
                 }
             }
+        }
+    }
+}
+
+/** "Continue game" with the score on a second line, so the label never clips. [BEST_PRACTICES #12b] */
+@Composable
+private fun ContinueButton(score: Int, onClick: () -> Unit) {
+    androidx.compose.material3.Button(
+        onClick, Modifier.fillMaxWidth().widthIn(max = 360.dp).height(72.dp), shape = RoundedCornerShape(50),
+        colors = ButtonDefaults.buttonColors(containerColor = P.accent, contentColor = P.onAccent),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Continue game", fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+            Text("Score $score", fontSize = 15.sp, maxLines = 1, softWrap = false)
         }
     }
 }
