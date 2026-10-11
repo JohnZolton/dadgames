@@ -31,7 +31,8 @@ fun Long.short(): String {
     val a = kotlin.math.abs(this)
     val sign = if (this < 0) "-" else ""
     fun f(v: Double, unit: String): String {
-        val s = if (v >= 100 || v == Math.floor(v)) "%.0f".format(Locale.US, Math.floor(v)) else "%.1f".format(Locale.US, Math.floor(v * 10) / 10)
+        // One decimal, rounded down so a balance never looks bigger than it is: 559.8M, 2.5K, 250K.
+        val s = "%.1f".format(Locale.US, Math.floor(v * 10) / 10)
         return sign + s.removeSuffix(".0") + unit
     }
     return when {

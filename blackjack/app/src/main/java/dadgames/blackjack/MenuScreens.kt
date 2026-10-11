@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -61,12 +62,11 @@ import dadgames.ui.BigButton
 import dadgames.ui.Choice
 import dadgames.ui.ConfirmTextButton
 import dadgames.ui.P
-import dadgames.ui.PlayingCard
 import dadgames.ui.PrimaryButton
 import dadgames.ui.ScreenScaffold
 import dadgames.ui.Section
 import dadgames.ui.Serif
-import dadgames.ui.StatsHeadline
+import dadgames.ui.Ring
 import dadgames.ui.Tile
 import dadgames.ui.TileRow
 import dadgames.ui.Toggle
@@ -84,8 +84,8 @@ fun HomeScreen(vm: GameViewModel) {
             verticalArrangement = Arrangement.Center,
         ) {
             Box(Modifier.height(170.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                PlayingCard(Card(Rank.ACE, Suit.SPADES), 92.dp, Modifier.offset(x = (-34).dp).rotate(-10f))
-                PlayingCard(Card(Rank.KING, Suit.HEARTS), 92.dp, Modifier.offset(x = 34.dp, y = 6.dp).rotate(10f))
+                BjCard(Card(Rank.ACE, Suit.SPADES), 92.dp, Modifier.offset(x = (-34).dp).rotate(-10f))
+                BjCard(Card(Rank.KING, Suit.HEARTS), 92.dp, Modifier.offset(x = 34.dp, y = 6.dp).rotate(10f))
             }
             Spacer(Modifier.height(10.dp))
             Text("Blackjack", style = MaterialTheme.typography.headlineLarge, color = P.text)
@@ -101,7 +101,7 @@ fun HomeScreen(vm: GameViewModel) {
                 when {
                     s.hands == 0L -> "Your table is ready"
                     s.streak >= 2 -> "${s.streak} wins in a row · ${s.winRate}% won"
-                    else -> "${s.hands.commas()} hands · ${s.winRate}% won"
+                    else -> "${s.hands.commas()} hand${if (s.hands == 1L) "" else "s"} · ${s.winRate}% won"
                 },
                 color = P.textDim, fontSize = 17.sp,
             )
@@ -131,7 +131,7 @@ fun TablesScreen(vm: GameViewModel) {
         Spacer(Modifier.height(8.dp))
         Text(
             if (vm.midHand) "Finish the hand you're playing before changing tables."
-            else "Same rules at every table. Swipe for bigger stakes.",
+            else "Same rules everywhere. Swipe for bigger stakes.",
             color = P.textDim, fontSize = 16.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(14.dp))
@@ -150,23 +150,24 @@ fun TablesScreen(vm: GameViewModel) {
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.92f)).padding(vertical = 14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text("Table bets", color = Color(0xFF3A4A5A), fontSize = 17.sp)
-                    Spacer(Modifier.height(6.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Min ", color = Color(0xFF1C2A3A), fontSize = 22.sp)
-                        Text(t.minBet.short(), color = Color(0xFF1C2A3A), fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                        Text("    Max ", color = Color(0xFF1C2A3A), fontSize = 22.sp)
-                        Text(t.maxBet.short(), color = Color(0xFF1C2A3A), fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                    Row {
+                        for ((label, v) in listOf("Min bet" to t.minBet, "Max bet" to t.maxBet)) {
+                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(label, color = Color(0xFF3A4A5A), fontSize = 16.sp, maxLines = 1)
+                                Text(v.short(), color = Color(0xFF1C2A3A), fontSize = 28.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+                        }
                     }
                 }
-                Spacer(Modifier.height(20.dp))
-                Box(Modifier.height(130.dp), contentAlignment = Alignment.Center) {
-                    val chips = dadgames.blackjack.core.CHIPS.filter { it <= t.maxBet && it >= t.minBet }.takeLast(3)
+                Box(Modifier.weight(1f).heightIn(min = 90.dp), contentAlignment = Alignment.Center) {
+                    // Smallest useful chip, a middle one and the biggest: shows the table's range.
+                    val all = dadgames.blackjack.core.CHIPS.filter { it <= t.maxBet && it >= t.minBet }
+                    val chips = listOf(all.first(), all[all.size / 2], all.last()).distinct()
                     for ((k, v) in chips.withIndex()) Chip(v, 72.dp, Modifier.offset(x = ((k - (chips.size - 1) / 2f) * 62).dp))
                 }
-                Text(vm.settings.rules.dealerLine, color = Color.White.copy(alpha = 0.85f), fontSize = 16.sp, maxLines = 1)
-                Text("Blackjack pays 3 to 2", color = Color.White.copy(alpha = 0.85f), fontSize = 16.sp, maxLines = 1)
-                Spacer(Modifier.weight(1f))
+                Text(vm.settings.rules.dealerLine.replace("soft 17", "soft\u00A017"), color = Color.White.copy(alpha = 0.85f), fontSize = 16.sp, textAlign = TextAlign.Center)
+                Text("Blackjack pays 3 to 2", color = Color.White.copy(alpha = 0.85f), fontSize = 16.sp, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(12.dp))
                 val enabled = !vm.midHand || here
                 PrimaryButton(
                     if (here && vm.midHand) "Back to the hand" else if (here) "Play here" else "Play",
@@ -226,7 +227,7 @@ fun SettingsScreen(vm: GameViewModel) {
         Spacer(Modifier.height(18.dp))
         Text(
             "Blackjack pays 3 to 2. Split aces get one card each. The dealer checks for blackjack with an ace or ten showing.",
-            color = P.textDim, fontSize = 14.sp,
+            color = P.textDim, fontSize = 14.sp, lineHeight = 20.sp,
         )
         Spacer(Modifier.height(10.dp))
         Text("Version 1.0.0", color = P.textDim, fontSize = 14.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
@@ -240,10 +241,7 @@ fun StatsScreen(vm: GameViewModel) {
     val s = vm.stats
     ScreenScaffold("Stats", onBack = { vm.screen = Screen.HOME }) {
         Spacer(Modifier.height(8.dp))
-        StatsHeadline(
-            if (s.hands == 0L) null else s.won.toFloat() / s.hands, "${s.winRate}%", "hands won",
-            s.hands.commas() to "hands played", s.biggestWin.short() to "biggest win",
-        )
+        Headline(s)
         Section("Balance") {
             Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
                 Row(verticalAlignment = Alignment.Bottom) {
@@ -251,7 +249,8 @@ fun StatsScreen(vm: GameViewModel) {
                     Spacer(Modifier.width(8.dp))
                     Text("Level ${vm.profile.level}", color = P.textDim, fontSize = 16.sp, modifier = Modifier.padding(bottom = 4.dp))
                 }
-                Text("Balance over the last ${s.history.size - 1} hands", color = P.textDim, fontSize = 14.sp)
+                val n = s.history.size - 1
+                Text(if (n == 1) "Balance after your last hand" else "Balance over the last $n hands", color = P.textDim, fontSize = 14.sp)
                 Spacer(Modifier.height(8.dp))
                 if (s.history.size >= 3) BalanceChart(s.history)
                 else Text("Play a few hands to see the chart.", color = P.textDim, fontSize = 15.sp, modifier = Modifier.padding(vertical = 18.dp))
@@ -271,7 +270,7 @@ fun StatsScreen(vm: GameViewModel) {
                 },
                 "current streak", highlight = s.streak >= 3,
             ),
-            Tile("${s.bestStreak}", "best win streak"),
+            Tile("${s.bestStreak}", "best streak"),
         )
         if (s.recent.isNotEmpty()) {
             Section("Recent hands") {
@@ -285,12 +284,31 @@ fun StatsScreen(vm: GameViewModel) {
     }
 }
 
+/** Win-rate ring plus two big numbers, each with its label underneath so nothing wraps at any size. */
+@Composable
+private fun Headline(s: Stats) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(P.wash).padding(20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Ring(if (s.hands == 0L) null else s.won.toFloat() / s.hands, "${s.winRate}%", "hands won")
+        Spacer(Modifier.width(20.dp))
+        Column {
+            for ((v, label) in listOf(s.hands.commas() to "hands played", s.biggestWin.short() to "biggest win")) {
+                Text(v, color = P.text, fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = Serif, maxLines = 1)
+                Text(label, color = P.textDim, fontSize = 15.sp, maxLines = 1)
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
 @Composable
 private fun RecentRow(h: HandRecord) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(h.result, color = P.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Text("You ${h.player} · Dealer ${h.dealer} · bet ${h.staked.short()}", color = P.textDim, fontSize = 14.sp, maxLines = 1)
+            Text("You ${h.player} · Dealer ${h.dealer} · bet ${h.staked.short()}", color = P.textDim, fontSize = 14.sp, maxLines = 2)
         }
         Text(
             if (h.net == 0L) "0" else h.net.signed(),
@@ -314,7 +332,7 @@ private fun BalanceChart(points: List<Long>) {
     val lo = points.min()
     val hi = points.max()
     Column {
-        Box(Modifier.fillMaxWidth().height(24.dp)) {
+        Box(Modifier.fillMaxWidth().heightIn(min = 24.dp).padding(bottom = 6.dp)) {
             val i = pick
             if (i != null) Text(
                 "Hand ${i + 1 - points.size}: ${points[i].commas()}".replace("Hand 0:", "Now:"),
@@ -322,9 +340,9 @@ private fun BalanceChart(points: List<Long>) {
             ) else Text("Drag across the chart to see a hand", color = ink, fontSize = 14.sp)
         }
         Row {
-            Column(Modifier.height(150.dp).width(58.dp), verticalArrangement = Arrangement.SpaceBetween) {
-                Text(hi.short(), color = ink, fontSize = 13.sp)
-                Text(lo.short(), color = ink, fontSize = 13.sp)
+            Column(Modifier.height(150.dp).width(66.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                Text(axisLabel(hi, hi - lo), color = ink, fontSize = 13.sp, maxLines = 1)
+                Text(axisLabel(lo, hi - lo), color = ink, fontSize = 13.sp, maxLines = 1)
             }
             Canvas(
                 Modifier.weight(1f).height(150.dp)
@@ -378,4 +396,16 @@ fun HelpScreen(vm: GameViewModel) {
             Text(b, color = P.text, fontSize = 17.sp, lineHeight = 25.sp)
         }
     }
+}
+
+/** Axis label precise enough for the chart's range: 560.61M when the range is small, 560M when it's big. */
+private fun axisLabel(v: Long, span: Long): String {
+    if (v < 1_000_000) return v.short()
+    val m = v / 1e6
+    val decimals = when {
+        span >= 10_000_000 -> 0
+        span >= 1_000_000 -> 1
+        else -> 2
+    }
+    return "%.${decimals}fM".format(java.util.Locale.US, m)
 }

@@ -106,7 +106,11 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     private val sound = Sound()
     private val rng = SecureRandom()
 
-    var screen by mutableStateOf(Screen.HOME)
+    /** Screen shown; saved so a relaunch puts him back where he was (at the table, mid-hand). [BEST_PRACTICES 12j] */
+    var screen: Screen
+        get() = screenState
+        set(v) { screenState = v; store.putBoolean("atTable", v == Screen.TABLE) }
+    private var screenState by mutableStateOf(Screen.HOME)
     var settings by mutableStateOf(store.load("settings", Settings.serializer()) ?: Settings())
         private set
     var stats by mutableStateOf(store.load("stats", Stats.serializer()) ?: Stats())
@@ -134,6 +138,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     var autoDeal by mutableStateOf(false)
         private set
     var message by mutableStateOf<String?>(null)
+        private set
+    /** The opening four cards are in the air: the buttons wait until they land. */
+    var dealing by mutableStateOf(false)
         private set
 
     private var job: Job? = null
@@ -169,6 +176,11 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             val s = strategy?.takeIf { it.rules == g.rules } ?: Strategy(g.rules).also { strategy = it }
             return s.best(g)
         }
+
+    init {
+        // Back to the table if that's where he was (always when a hand was in progress).
+        if (store.getBoolean("atTable", false) || game.phase != Phase.BETTING) openTable()
+    }
 
     // ---------------------------------------------------------------- timings
 
@@ -255,10 +267,12 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                 shuffling = false
             }
             batchStart = g.nextId
+            dealing = true
             g.deal(bet)
             commit(g)
             repeat(4) { i -> viewModelScope.launch { delay(i * stagger); play(Sound.Fx.CARD) } }
             delay(3 * stagger + flight)
+            dealing = false
             flow()
         }
         return true
@@ -426,7 +440,6 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Debug builds only (see MainActivity): put these card values on top of the shoe for screenshots. */
     fun debugStack(values: List<Int>) {
-        android.util.Log.d("blackjack", "debugStack $values in ${game.phase}")
         if (game.phase != Phase.BETTING) return
         val g = game.copy()
         if (g.needsShuffle) g.reshuffle()
@@ -436,6 +449,13 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         }
         g.shoe.addAll(top.reversed())
         commit(g)
+    }
+
+    /** Debug builds only: set the balance (to show the out-of-chips panel). */
+    fun debugBalance(b: Long) {
+        if (game.phase != Phase.BETTING) return
+        commit(game.copy().also { it.balance = b })
+        saveProfile(profile.copy(bet = minOf(bet, b)))
     }
 
     private fun play(fx: Sound.Fx) { if (settings.sound) sound.play(fx) }

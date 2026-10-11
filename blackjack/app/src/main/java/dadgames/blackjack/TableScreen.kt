@@ -62,6 +62,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import dadgames.blackjack.core.Action
 import dadgames.blackjack.core.CHIPS
 import dadgames.blackjack.core.DCard
@@ -73,7 +76,6 @@ import dadgames.blackjack.core.Rules
 import dadgames.blackjack.core.TableInfo
 import dadgames.ui.CardBack
 import dadgames.ui.P
-import dadgames.ui.PlayingCard
 import dadgames.ui.ResultPanel
 import dadgames.ui.Serif
 import dadgames.ui.PrimaryButton
@@ -90,18 +92,22 @@ const val SWEEP_STEP = 14L
 /**
  * Everything on the table is placed absolutely in one coordinate space (dp from the top-left of
  * the area inside the system bars), so a card or chip can move between any two places on screen
- * without jumping. Sized for dad's 411 x 891 dp screen first. [BEST_PRACTICES #10, #14]
+ * without jumping. Laid out bottom-up so it fits the emulator's 360 x ~700 dp (1080 px at 480 dpi)
+ * as well as dad's 411 dp wide screen. [BEST_PRACTICES #10, #14]
  */
 class Geo(val w: Float, val h: Float) {
-    val dealerW = min(100f, w * 0.245f)
-    val dealerY = 104f
+    val dealerW = min(100f, w * 0.23f)
+    val dealerY = 102f
     val dealerH = dealerW * 1.42f
-    val dealerBubbleY = dealerY + dealerH + 8f
-    val feltY = dealerBubbleY + 34f
+    val dealerBubbleY = dealerY + dealerH + 6f
+    val feltY = dealerBubbleY + 36f
     val playerW = min(118f, w * 0.29f)
     val playerH = playerW * 1.42f
     val actionsTop = h - 122f
-    val playerY = maxOf(feltY + 140f, actionsTop - playerH - 92f)
+    /** Room between the cards and the buttons for the auto-deal sign and split-hand chips. */
+    val pillTop = actionsTop - 50f
+    /** Felt print in play: table name, dealer rule, payout (~80 dp); the player's total bubble sits under it. */
+    val playerY = maxOf(feltY + 80f + 40f, pillTop - 8f - playerH - 12f).coerceAtMost(pillTop - 8f - playerH)
     val playerBubbleY = playerY - 36f
     val belowCards = playerY + playerH + 14f
 
@@ -154,7 +160,7 @@ private fun handBoxes(g: Game, geo: Geo): List<HandBox> {
         var step = cw * 0.44f
         if (cw + step * (cards - 1) > slot - 8f) step = (slot - 8f - cw) / (cards - 1).coerceAtLeast(1)
         val total = cw + step * (cards - 1)
-        HandBox(4f + slot * i + (slot - total) / 2f, cw, total, geo.playerY)
+        HandBox(4f + slot * i + (slot - total) / 2f, cw, total, geo.playerY + 6f)
 
     }
 }
@@ -178,11 +184,11 @@ fun layoutCards(g: Game, geo: Geo, sweeping: Boolean): Map<Int, Spot> {
         val b = boxes[hi]
         val step = cardStep(b, h.cards.size)
         val active = playing && hi == g.active
-        val lift = if (active) -12f else 0f
+        // The active split hand is marked by its gold total and the others dimming (no lift: no room on a small screen).
         for ((i, c) in h.cards.withIndex()) {
             // Doubled card lies across like in a casino? Keep it straight but a bit lower so it reads as the double.
             val dy = i * 4f + if (h.doubled && i == 2) 8f else 0f
-            out[c.id] = Spot(b.x + step * i, b.y + dy + lift, b.cardW, faceUp = true, z = z++, dim = playing && !active)
+            out[c.id] = Spot(b.x + step * i, b.y + dy, b.cardW, faceUp = true, z = z++, dim = playing && !active)
         }
     }
     if (sweeping) {
@@ -195,6 +201,18 @@ fun layoutCards(g: Game, geo: Geo, sweeping: Boolean): Map<Int, Spot> {
 
 @Composable
 fun TableScreen(vm: GameViewModel) {
+    // The table is a fixed layout: let large system fonts grow its text a little, not enough to collide.
+    val d = LocalDensity.current
+    CompositionLocalProvider(LocalDensity provides Density(d.density, d.fontScale.coerceAtMost(TABLE_FONT_SCALE_MAX))) {
+        Table(vm)
+    }
+}
+
+/** Largest font scale honoured on the table (menus follow the system setting fully). */
+const val TABLE_FONT_SCALE_MAX = 1.1f
+
+@Composable
+private fun Table(vm: GameViewModel) {
     val g = vm.game
     val t = vm.table
     val felt = Brush.radialGradient(
@@ -216,7 +234,7 @@ fun TableScreen(vm: GameViewModel) {
             TopBar(vm, geo)
             StatusLine(vm, g, geo)
             if (g.phase == Phase.BETTING && !vm.sweeping) BettingControls(vm, geo)
-            if (vm.canAct || (vm.busy && (g.phase == Phase.PLAYER || g.phase == Phase.INSURANCE))) ActionBar(vm, g, geo)
+            if (vm.canAct || (vm.busy && !vm.dealing && (g.phase == Phase.PLAYER || g.phase == Phase.INSURANCE))) ActionBar(vm, g, geo)
             HintBulb(vm, geo)
             AutoDealPill(vm, geo)
         }
@@ -252,7 +270,8 @@ private fun FeltPrint(vm: GameViewModel, geo: Geo, t: TableInfo) {
         Text(t.name.uppercase(), color = Color.Black.copy(alpha = 0.28f), fontFamily = Serif, fontWeight = FontWeight.Bold, fontSize = 30.sp, letterSpacing = 2.sp, maxLines = 1, lineHeight = 34.sp)
         Text(r.dealerLine, color = ink, fontFamily = Serif, fontSize = 16.sp, maxLines = 1, lineHeight = 20.sp)
         Text("BLACKJACK PAYS 3 TO 2", color = ink, fontFamily = Serif, fontWeight = FontWeight.Bold, fontSize = 18.sp, letterSpacing = 1.sp, maxLines = 1, lineHeight = 22.sp)
-        Text(rulesLine(r), color = Color.White.copy(alpha = 0.22f), fontSize = 12.sp, maxLines = 1, lineHeight = 15.sp)
+        // The extra rules line only shows between hands, when there's room.
+        if (betting) Text(rulesLine(r), color = Color.White.copy(alpha = 0.22f), fontSize = 12.sp, maxLines = 1, lineHeight = 15.sp)
     }
 }
 
@@ -339,7 +358,7 @@ private fun TableCard(c: DCard, s: Spot, isNew: Boolean, sweeping: Boolean, dela
         if (flip.value > 90f) {
             CardBack(w.value.dp, Modifier.graphicsLayer { rotationY = 180f })
         } else {
-            PlayingCard(c.card, w.value.dp)
+            BjCard(c.card, w.value.dp)
             if (dim > 0f) Box(Modifier.size(w.value.dp, (w.value * 1.42f).dp).clip(RoundedCornerShape((w.value * 0.09f).dp)).background(Color.Black.copy(alpha = 0.32f * dim)))
         }
     }
@@ -349,8 +368,9 @@ private fun TableCard(c: DCard, s: Spot, isNew: Boolean, sweeping: Boolean, dela
 
 /** Shows [value] only after [delayMs], so a total changes when the card lands, not when it leaves the shoe. */
 @Composable
-private fun lagged(value: String, delayMs: Long): String? {
-    var shown by remember { mutableStateOf(if (delayMs > 0) null else value) }
+private fun lagged(value: String, delayMs: Long, fresh: Boolean): String? {
+    // Fresh cards: no total until the first one lands. Resumed table: show it at once.
+    var shown by remember { mutableStateOf(if (fresh && delayMs > 0) null else value) }
     LaunchedEffect(value) { if (value != shown) { delay(delayMs); shown = value } }
     return shown
 }
@@ -371,7 +391,7 @@ private fun Bubbles(vm: GameViewModel, g: Game, geo: Geo) {
             !g.holeHidden && g.phase == Phase.ROUND_OVER -> "${t.best}"
             else -> t.label
         }
-        val shown = lagged(label, landing(g.dealer, base = vm.flight))
+        val shown = lagged(label, landing(g.dealer, base = vm.flight), fresh = g.dealer.any { it.id >= vm.batchStart })
         if (shown != null) Box(Modifier.zIndex(250f).fillMaxWidth().at(0f, geo.dealerBubbleY), contentAlignment = Alignment.TopCenter) {
             Bubble(shown, highlight = false)
         }
@@ -387,9 +407,8 @@ private fun Bubbles(vm: GameViewModel, g: Game, geo: Geo) {
             t.bust -> "Bust · ${t.best}"
             else -> t.label
         }
-        val shown = lagged(label, landing(h.cards))
-        val lift = if (active && g.hands.size > 1) -12f else 0f
-        if (shown != null) Box(Modifier.zIndex(250f).at(b.x, b.y - 36f + lift).width(b.width.dp), contentAlignment = Alignment.TopCenter) {
+        val shown = lagged(label, landing(h.cards), fresh = h.cards.any { it.id >= vm.batchStart })
+        if (shown != null) Box(Modifier.zIndex(250f).at(b.x, b.y - 36f).width(b.width.dp), contentAlignment = Alignment.TopCenter) {
             Bubble(shown, highlight = active && g.hands.size > 1)
         }
     }
@@ -444,7 +463,9 @@ private fun BetChips(vm: GameViewModel, g: Game, geo: Geo) {
         val settled = g.phase == Phase.ROUND_OVER
         // Bet (or what's left of it after a loss/surrender)
         if (!settled || stage == 0) {
-            MovingStack(k, h.bet, ChipTarget(home, 1f), size, origin, vm, labelBelow = true)
+            // Slides out from the bet spot (or the first hand, after a split) only when the cards are new.
+            val fresh = h.cards.any { it.id >= vm.batchStart } || (h.split && h.cards.size == 1)
+            MovingStack(k, h.bet, ChipTarget(home, 1f), size, if (fresh) origin else null, vm, labelBelow = true)
         } else {
             if (kept > 0) MovingStack(k + 1, kept, ChipTarget(if (stage >= 2) geo.bank else home, if (stage >= 2) 0f else 1f), size, home, vm, labelBelow = stage < 2)
             if (lostPart > 0) key("lost$i") { MovingStack(k + 2, lostPart, ChipTarget(geo.house, 0f), size, home, vm, labelBelow = false) }
@@ -456,7 +477,8 @@ private fun BetChips(vm: GameViewModel, g: Game, geo: Geo) {
         }
     }
     if (g.insuranceBet > 0 && g.phase != Phase.ROUND_OVER) {
-        Box(Modifier.at(geo.w - 96f, geo.feltY - 6f)) {
+        // Beside the dealer's cards, under the discard tray: clear of the felt print.
+        Box(Modifier.at(geo.w - 78f, geo.dealerY + 96f).width(72.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Chip(chipBreakdown(g.insuranceBet).first(), 34.dp)
                 Text("Insured", color = Color.White, fontSize = 13.sp)
@@ -577,9 +599,11 @@ fun LevelBadge(level: Int, xp: Int, size: Float = 54f) {
             drawArc(Color.White.copy(alpha = 0.15f), 0f, 360f, false, Offset(inset, inset), androidx.compose.ui.geometry.Size(this.size.width - inset * 2, this.size.height - inset * 2), style = st)
             drawArc(gold, -90f, 360f * frac.coerceIn(0f, 1f), false, Offset(inset, inset), androidx.compose.ui.geometry.Size(this.size.width - inset * 2, this.size.height - inset * 2), style = st)
         }
+        // Sized in dp from the badge (not sp) so a large system font can't overflow the ring. [12a]
+        val d = LocalDensity.current
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Level", color = Color.White.copy(alpha = 0.8f), fontSize = (size * 0.2f).sp, style = centeredGlyph)
-            Text("$level", color = Color.White, fontSize = (size * 0.33f).sp, fontWeight = FontWeight.Bold, style = centeredGlyph, maxLines = 1, softWrap = false)
+            Text("Level", color = Color.White.copy(alpha = 0.8f), fontSize = with(d) { (size * 0.2f).dp.toSp() }, style = centeredGlyph)
+            Text("$level", color = Color.White, fontSize = with(d) { (size * if (level >= 1000) 0.27f else 0.33f).dp.toSp() }, fontWeight = FontWeight.Bold, style = centeredGlyph, maxLines = 1, softWrap = false)
         }
     }
 }
@@ -620,7 +644,7 @@ private fun StatusLine(vm: GameViewModel, g: Game, geo: Geo) {
     val text: String? = when {
         vm.shuffling -> "Shuffling the shoe…"
         vm.message != null -> vm.message
-        g.phase == Phase.INSURANCE && vm.canAct -> { yours = true; "Dealer shows an ace. Insurance for ${(g.hands[0].bet / 2).short()}?" }
+        g.phase == Phase.INSURANCE && vm.canAct -> { yours = true; "Insurance? It costs ${(g.hands[0].bet / 2).short()}" }
         vm.showHint && vm.hintAction != null -> { yours = true; "Hint: ${hintWords(vm.hintAction!!)}" }
         g.phase == Phase.PLAYER && vm.canAct -> {
             yours = true
@@ -648,7 +672,7 @@ fun hintWords(a: Action): String = when (a) {
     Action.STAND -> "Stand"
     Action.DOUBLE -> "Double"
     Action.SPLIT -> "Split"
-    Action.SURRENDER -> "Surrender"
+    Action.SURRENDER -> "Give up (surrender)"
     Action.INSURANCE -> "Take insurance"
     Action.NO_INSURANCE -> "No insurance"
 }
@@ -657,6 +681,7 @@ private fun roundWords(g: Game): String {
     val s = g.summary ?: return ""
     return when {
         s.insuranceWon && s.net == 0L -> "Insurance paid. You break even"
+        g.hands.all { it.surrendered } -> "Surrendered. Half your bet back"
         s.net > 0 -> "You win ${s.net.short()}"
         s.net < 0 -> if (s.dealerBlackjack) "Dealer has blackjack" else "Dealer wins"
         else -> "Push. Bet returned"
@@ -672,7 +697,7 @@ private fun buttonFor(a: Action): Btn = when (a) {
     Action.SPLIT -> Btn(a, "Split", Icon.SPLIT, Color(0xFFC04FD8))
     Action.DOUBLE -> Btn(a, "Double", Icon.DOUBLE, Color(0xFF3D8BEB))
     Action.HIT -> Btn(a, "Hit", Icon.HIT, Color(0xFF2FBF5B))
-    Action.SURRENDER -> Btn(a, "Surrender", Icon.SURRENDER, Color(0xFF8A8F98))
+    Action.SURRENDER -> Btn(a, "Give up", Icon.SURRENDER, Color(0xFF8A8F98))
     Action.INSURANCE -> Btn(a, "Insurance", Icon.INSURANCE, Color(0xFFD9A93A))
     Action.NO_INSURANCE -> Btn(a, "No", Icon.NO, Color(0xFF8A8F98))
 }
@@ -724,7 +749,7 @@ private fun RoundAction(b: Btn, modifier: Modifier, enabled: Boolean, hinted: Bo
 @Composable
 private fun HintBulb(vm: GameViewModel, geo: Geo) {
     val g = vm.game
-    if (!vm.settings.hintButton || !(g.phase == Phase.PLAYER || g.phase == Phase.INSURANCE) || g.hands.size >= 2) return
+    if (!vm.settings.hintButton || vm.dealing || !(g.phase == Phase.PLAYER || g.phase == Phase.INSURANCE) || g.hands.size >= 2) return
     val on = vm.showHint
     val gold = P.accent
     Box(
@@ -738,15 +763,16 @@ private fun HintBulb(vm: GameViewModel, geo: Geo) {
 private fun AutoDealPill(vm: GameViewModel, geo: Geo) {
     if (!vm.autoDeal) return
     val pulse by rememberInfiniteTransition(label = "a").animateFloat(0f, 1f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "a")
-    Box(Modifier.fillMaxWidth().at(0f, geo.actionsTop - 66f).zIndex(500f), contentAlignment = Alignment.Center) {
+    // Between the cards and the buttons, clear of the hint bulb on the right.
+    Box(Modifier.at(0f, geo.pillTop).width((geo.w - 76f).dp).zIndex(500f), contentAlignment = Alignment.Center) {
         Row(
             Modifier.clip(RoundedCornerShape(50)).background(Color(0xE6101A14))
                 .border(2.dp, P.accent.copy(alpha = 0.5f + 0.5f * pulse), RoundedCornerShape(50))
-                .clickable { vm.stopAutoDeal() }.padding(horizontal = 18.dp, vertical = 10.dp),
+                .clickable { vm.stopAutoDeal() }.padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Auto deal on", color = P.accent, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-            Text("  ·  Tap to stop", color = Color.White, fontSize = 17.sp, maxLines = 1, softWrap = false)
+            Text("Auto deal", color = P.accent, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+            Text(" · Tap to stop", color = Color.White, fontSize = 16.sp, maxLines = 1, softWrap = false)
         }
     }
 }
@@ -799,7 +825,7 @@ private fun BettingControls(vm: GameViewModel, geo: Geo) {
         val canAdd = vm.bet < minOf(t.maxBet, vm.game.balance)
         Box(
             Modifier.at(c.x - geo.chipRack / 2, c.y - geo.chipRack / 2).size(geo.chipRack.dp).clip(CircleShape)
-                .clickable(enabled = canAdd) {
+                .clickable {
                     if (vm.tapChip(v)) flying.add(Fly(counter++, v, c))
                 },
         ) { Chip(v, geo.chipRack.dp, dim = !canAdd) }

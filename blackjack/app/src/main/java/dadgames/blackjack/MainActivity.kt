@@ -23,6 +23,7 @@ class MainActivity : ComponentActivity() {
     /** Debuggable builds only: `--es stack 8,6,8,10` stacks the shoe so screenshots can show splits etc. */
     private fun debugIntent(i: android.content.Intent?) {
         if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) return
+        if (i?.hasExtra("balance") == true) vm.debugBalance(i.getLongExtra("balance", 0))
         val s = i?.getStringExtra("stack") ?: return
         vm.debugStack(s.split(",").mapNotNull { it.trim().toIntOrNull() })
     }
