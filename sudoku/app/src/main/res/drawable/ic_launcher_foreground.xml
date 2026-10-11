@@ -1,15 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- A 3x3 corner of a sudoku: cream board, dark grid, one blue picked square with a blue 4. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- back card, tilted -->
-    <group android:pivotX="54" android:pivotY="54" android:rotation="-12">
-        <path android:fillColor="#F3EBDD" android:pathData="M36,30 h28 a4,4 0 0 1 4,4 v40 a4,4 0 0 1 -4,4 h-28 a4,4 0 0 1 -4,-4 v-40 a4,4 0 0 1 4,-4 z"/>
-        <path android:fillColor="#1A1A1A" android:pathData="M50,42 c-6,7 -11,10 -11,15 c0,4 4,6 8,4 l-2,6 h10 l-2,-6 c4,2 8,0 8,-4 c0,-5 -5,-8 -11,-15 z"/>
-    </group>
-    <!-- front card, tilted -->
-    <group android:pivotX="54" android:pivotY="54" android:rotation="12">
-        <path android:fillColor="#FFFDF8" android:pathData="M44,30 h28 a4,4 0 0 1 4,4 v40 a4,4 0 0 1 -4,4 h-28 a4,4 0 0 1 -4,-4 v-40 a4,4 0 0 1 4,-4 z"/>
-        <path android:fillColor="#C8342D" android:pathData="M58,66 c-8,-7 -12,-11 -12,-15.5 c0,-3.5 2.7,-5.5 5.5,-5.5 c2.8,0 5,1.8 6.5,4 c1.5,-2.2 3.7,-4 6.5,-4 c2.8,0 5.5,2 5.5,5.5 c0,4.5 -4,8.5 -12,15.5 z"/>
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="0.76" android:scaleY="0.76">
+    <!-- board -->
+    <path android:fillColor="#FFFDF8" android:strokeColor="#1E2A3A" android:strokeWidth="2.6"
+        android:pathData="M30,27 h48 a5,5 0 0 1 5,5 v44 a5,5 0 0 1 -5,5 h-48 a5,5 0 0 1 -5,-5 v-44 a5,5 0 0 1 5,-5 z"/>
+    <!-- picked square (centre) -->
+    <path android:fillColor="#C4D6F4" android:pathData="M44.3,45 h19.4 v18 h-19.4 z"/>
+    <!-- grid lines -->
+    <path android:strokeColor="#1E2A3A" android:strokeAlpha="0.35" android:strokeWidth="1.2"
+        android:pathData="M44.3,27 v54 M63.7,27 v54 M25,45 h58 M25,63 h58"/>
+    <!-- 1 (top left, given) -->
+    <path android:strokeColor="#1E2A3A" android:strokeWidth="2.8" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M32.5,33 l3,-2 v12"/>
+    <!-- 7 (top right, given) -->
+    <path android:strokeColor="#1E2A3A" android:strokeWidth="2.8" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M69,31.5 h8 l-5,11.5"/>
+    <!-- 4 (centre, his number in blue) -->
+    <path android:strokeColor="#2F6FDB" android:strokeWidth="2.8" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M56,48.5 l-6.5,8.5 h10 M56,48.5 v11.5"/>
     </group>
 </vector>
