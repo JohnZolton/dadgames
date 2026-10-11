@@ -56,7 +56,7 @@ class FuzzTest {
         var total = 0L
         var moves = 0L
         repeat(games) {
-            val g = play(GameState.newClassic(rnd.nextLong()), randomPlayer(rnd))
+            val g = play(GameState.newClassic(rnd.nextLong()), pick = randomPlayer(rnd))
             total += g.score; moves += g.moves
         }
         println("random play: $games games, avg score ${total / games}, avg moves ${moves / games}")
@@ -74,7 +74,7 @@ class FuzzTest {
             // Capped: an unhurried bot survives thousands of moves.
             val b = play(GameState.newClassic(seed), maxMoves = 300) { bot.choose(it)!! }
             botTotal += b.score; best = maxOf(best, b.score)
-            randTotal += play(GameState.newClassic(seed), randomPlayer(rnd)).score
+            randTotal += play(GameState.newClassic(seed), pick = randomPlayer(rnd)).score
         }
         println("bot avg ${botTotal / n} (best $best) vs random avg ${randTotal / n}")
         assertTrue(botTotal > randTotal * 3)
@@ -97,7 +97,7 @@ class FuzzTest {
             assertFalse(g.over)
             if (Daily.solvable(g)) solved++
             // Random play on dailies keeps the invariants too.
-            play(g, randomPlayer(Random(it)))
+            play(g, pick = randomPlayer(Random(it)))
             day = day.plusDays(1)
         }
         println("daily: $solved / $n solvable by the bot, ${(System.currentTimeMillis() - t0) / n} ms per day")
