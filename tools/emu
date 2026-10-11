@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Per-agent emulator set to dad's phone screen (1080x2340 @ 480dpi).
+#   emu up AVD PORT     boot headless (if not running), wait, set screen size; prints serial
+#   emu down PORT       shut it down
+#   emu shot PORT FILE  screenshot
+# Never use another agent's port. [BEST_PRACTICES #27]
+set -e
+SDK=$HOME/Android/Sdk; ADB=$SDK/platform-tools/adb
+case "$1" in
+  up)
+    AVD=$2; PORT=$3; SER=emulator-$PORT
+    if ! $ADB -s $SER get-state >/dev/null 2>&1; then
+      nohup $SDK/emulator/emulator -avd "$AVD" -port "$PORT" -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect >/tmp/emu-$PORT.log 2>&1 &
+    fi
+    for i in $(seq 1 120); do
+      [ "$($ADB -s $SER shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] && break; sleep 2
+    done
+    $ADB -s $SER shell wm size 1080x2340; $ADB -s $SER shell wm density 480
+    $ADB -s $SER shell settings put secure navigation_mode 0 >/dev/null 2>&1 || true   # 3-button nav like dad's phone
+    echo $SER ;;
+  down) $ADB -s emulator-$2 emu kill ;;
+  shot) $ADB -s emulator-$2 exec-out screencap -p > "$3"; echo "$3" ;;
+  *) echo "usage: emu up AVD PORT | down PORT | shot PORT FILE"; exit 1 ;;
+esac
