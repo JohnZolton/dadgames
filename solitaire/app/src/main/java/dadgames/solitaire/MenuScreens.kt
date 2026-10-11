@@ -254,7 +254,7 @@ fun StatsScreen(vm: GameViewModel) {
 private fun ScoreRow(a: String, b: String, c: String, d: String, header: Boolean = false) {
     val color = if (header) P.textDim else P.text
     val w = if (header) FontWeight.SemiBold else FontWeight.Bold
-    val size = if (header) 16.sp else 18.sp
+    val size = if (header) fixedSp(16f) else fixedSp(18f)
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = if (header) 6.dp else 7.dp)) {
         Text(a, color = color, fontSize = size, fontWeight = w, modifier = Modifier.weight(1f), maxLines = 1)
         Text(b, color = color, fontSize = size, fontWeight = w, modifier = Modifier.weight(0.9f), maxLines = 1)
@@ -322,7 +322,7 @@ fun DailyScreen(vm: GameViewModel) {
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                 for (n in listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")) {
-                    Text(n, color = P.textDim, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                    Text(n, color = P.textDim, fontSize = fixedSp(14f), textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
                 }
             }
             val lead = month.atDay(1).dayOfWeek.value % 7 // Sunday first
@@ -353,7 +353,7 @@ fun DailyScreen(vm: GameViewModel) {
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Text(
-                                        "$day", fontSize = 17.sp, fontWeight = if (date == today) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                        "$day", fontSize = fixedSp(17f), fontWeight = if (date == today) FontWeight.ExtraBold else FontWeight.SemiBold,
                                         color = when { future -> P.text.copy(alpha = 0.35f); done -> P.onAccent; else -> P.ink },
                                     )
                                 }

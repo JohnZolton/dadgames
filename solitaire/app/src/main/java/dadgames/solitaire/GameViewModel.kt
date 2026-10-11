@@ -17,6 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.serializer
 import solitaire.core.Daily
 import solitaire.core.DailyProgress
 import solitaire.core.Hint
@@ -42,10 +43,6 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     private val store = Store(app, "solitaire")
     private val sounds = Sounds(app)
 
-    var screen by mutableStateOf(Screen.HOME)
-        private set
-    /** Screens to go back to. Home and the game reset it. */
-    private val stack = ArrayList<Screen>()
 
     var settings by mutableStateOf(store.load(K_SETTINGS, AppSettings.serializer()) ?: AppSettings())
         private set
@@ -55,6 +52,19 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var game by mutableStateOf(store.load(K_GAME, Klondike.serializer()))
         private set
+
+    /** Back where he left off after Android kills the app: the game, or the menu screen he was on. [BEST_PRACTICES #12j] */
+    var screen by mutableStateOf(
+        store.load(K_SCREEN, String.serializer())
+            ?.let { runCatching { Screen.valueOf(it) }.getOrNull() }
+            ?.let { if (it == Screen.GAME && game.let { g -> g == null || g.won }) Screen.HOME else it }
+            ?: Screen.HOME
+    )
+        private set
+    /** Screens to go back to. Home and the game reset it. */
+    private val stack = ArrayList<Screen>().apply { if (screen != Screen.HOME) add(Screen.HOME) }
+
+    private fun rememberScreen() = store.save(viewModelScope, K_SCREEN, String.serializer(), screen.name)
 
     var hint by mutableStateOf<Hint?>(null)
         private set
@@ -140,6 +150,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             else -> if (s != screen) stack.add(screen)
         }
         screen = s
+        rememberScreen()
         syncClock()
     }
 
@@ -147,6 +158,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         var s = stack.removeLastOrNull() ?: Screen.HOME
         if (s == Screen.GAME && game == null) s = Screen.HOME
         screen = s
+        rememberScreen()
         syncClock()
     }
 
@@ -307,5 +319,6 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         const val K_STATS = "stats"
         const val K_DAILY = "daily"
         const val K_GAME = "game"
+        const val K_SCREEN = "screen"
     }
 }

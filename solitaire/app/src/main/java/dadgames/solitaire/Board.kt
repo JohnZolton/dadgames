@@ -27,7 +27,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -159,7 +158,10 @@ fun Board(vm: GameViewModel, g: Klondike, modifier: Modifier = Modifier) {
         val lay = layout(g, d)
         val layState = rememberUpdatedState(lay)
         val cw = d.cw.dp
+        // Per-card animation state lives here, not in each sprite, so a sprite that gets recomposed from
+        // scratch carries on from where its card is instead of re-dealing.
         val anims = remember { HashMap<Card, Animatable<Offset, AnimationVector2D>>() }
+        val dealt = remember { HashMap<Card, Int>() }
         val animate = settings.animations
 
         // Drag state: plain floats updated straight from the gesture. [BEST_PRACTICES #15]
@@ -234,16 +236,18 @@ fun Board(vm: GameViewModel, g: Klondike, modifier: Modifier = Modifier) {
 
         // ---- cards
         val stockPos = Offset(d.stockX * density, d.topY * density)
-        for (p in lay.places) {
-            if (p.card in hidden) continue
-            key(p.card) {
-                CardSprite(
-                    p, cw, density, back, anims, animate,
-                    dealKey = vm.dealCount, animateDeal = dealing, stockPos = stockPos,
-                    dragged = p.card in dragCards, dragX = dragX, dragY = dragY,
-                    shake = if (p.card in shaking) shakeAnim else null,
-                    glow = p.card in hintCards,
-                )
+        Box(Modifier.fillMaxSize()) {
+            for (p in lay.places) {
+                if (p.card in hidden) continue
+                key(p.card) {
+                    CardSprite(
+                        p, cw, density, back, anims, dealt, animate,
+                        dealKey = vm.dealCount, animateDeal = dealing, stockPos = stockPos,
+                        dragged = p.card in dragCards, dragX = dragX, dragY = dragY,
+                        shake = if (p.card in shaking) shakeAnim else null,
+                        glow = p.card in hintCards,
+                    )
+                }
             }
         }
         if (hintRect != null) {
@@ -371,6 +375,7 @@ private fun CardSprite(
     density: Float,
     back: Back,
     anims: HashMap<Card, Animatable<Offset, AnimationVector2D>>,
+    dealt: HashMap<Card, Int>,
     animate: Boolean,
     dealKey: Int,
     animateDeal: Boolean,
@@ -382,11 +387,11 @@ private fun CardSprite(
     glow: Boolean,
 ) {
     val target = Offset(p.x * density, p.y * density)
-    val anim = remember { Animatable(if (animateDeal && animate) stockPos else target, Offset.VectorConverter).also { anims[p.card] = it } }
-    var seenDeal by remember { mutableIntStateOf(-1) }
+    val toDeal = animateDeal && animate && dealt[p.card] != dealKey
+    val anim = remember { anims[p.card] ?: Animatable(if (toDeal) stockPos else target, Offset.VectorConverter).also { anims[p.card] = it } }
     LaunchedEffect(target, dealKey) {
-        if (seenDeal != dealKey) {
-            seenDeal = dealKey
+        if (dealt[p.card] != dealKey) {
+            dealt[p.card] = dealKey
             if (animateDeal && animate) {
                 anim.snapTo(stockPos)
                 delay(dealOrder(p) * 30L)

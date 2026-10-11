@@ -1,15 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- A Klondike column: a face-down card, then two face-up cards cascading down. Kept inside the
+     central 66 dp safe circle (centre 54,54, radius 33). [BEST_PRACTICES #12e] -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- back card, tilted -->
-    <group android:pivotX="54" android:pivotY="54" android:rotation="-12">
-        <path android:fillColor="#F3EBDD" android:pathData="M36,30 h28 a4,4 0 0 1 4,4 v40 a4,4 0 0 1 -4,4 h-28 a4,4 0 0 1 -4,-4 v-40 a4,4 0 0 1 4,-4 z"/>
-        <path android:fillColor="#1A1A1A" android:pathData="M50,42 c-6,7 -11,10 -11,15 c0,4 4,6 8,4 l-2,6 h10 l-2,-6 c4,2 8,0 8,-4 c0,-5 -5,-8 -11,-15 z"/>
-    </group>
-    <!-- front card, tilted -->
-    <group android:pivotX="54" android:pivotY="54" android:rotation="12">
-        <path android:fillColor="#FFFDF8" android:pathData="M44,30 h28 a4,4 0 0 1 4,4 v40 a4,4 0 0 1 -4,4 h-28 a4,4 0 0 1 -4,-4 v-40 a4,4 0 0 1 4,-4 z"/>
-        <path android:fillColor="#C8342D" android:pathData="M58,66 c-8,-7 -12,-11 -12,-15.5 c0,-3.5 2.7,-5.5 5.5,-5.5 c2.8,0 5,1.8 6.5,4 c1.5,-2.2 3.7,-4 6.5,-4 c2.8,0 5.5,2 5.5,5.5 c0,4.5 -4,8.5 -12,15.5 z"/>
-    </group>
+    <!-- face-down card (blue dots) -->
+    <path android:fillColor="#FFFDF8" android:pathData="M42,25 h24 a3,3 0 0 1 3,3 v34 a3,3 0 0 1 -3,3 h-24 a3,3 0 0 1 -3,-3 v-34 a3,3 0 0 1 3,-3 z"/>
+    <path android:fillColor="#3B82D6" android:pathData="M43,27 h22 a2,2 0 0 1 2,2 v32 a2,2 0 0 1 -2,2 h-22 a2,2 0 0 1 -2,-2 v-32 a2,2 0 0 1 2,-2 z"/>
+    <path android:fillColor="#E8F1FC" android:pathData="M46,30 m-1.2,0 a1.2,1.2 0 1 0 2.4,0 a1.2,1.2 0 1 0 -2.4,0 M52,30 m-1.2,0 a1.2,1.2 0 1 0 2.4,0 a1.2,1.2 0 1 0 -2.4,0 M58,30 m-1.2,0 a1.2,1.2 0 1 0 2.4,0 a1.2,1.2 0 1 0 -2.4,0 M64,30 m-1.2,0 a1.2,1.2 0 1 0 2.4,0 a1.2,1.2 0 1 0 -2.4,0 M49,33 m-1.2,0 a1.2,1.2 0 1 0 2.4,0 a1.2,1.2 0 1 0 -2.4,0 M55,33 m-1.2,0 a1.2,1.2 0 1 0 2.4,0 a1.2,1.2 0 1 0 -2.4,0 M61,33 m-1.2,0 a1.2,1.2 0 1 0 2.4,0 a1.2,1.2 0 1 0 -2.4,0"/>
+    <!-- middle card: red heart index (red then black, as in a real column) -->
+    <path android:fillColor="#00000000" android:strokeColor="#33000000" android:strokeWidth="0.6" android:pathData="M42,35 h24 a3,3 0 0 1 3,3 v34 a3,3 0 0 1 -3,3 h-24 a3,3 0 0 1 -3,-3 v-34 a3,3 0 0 1 3,-3 z"/>
+    <path android:fillColor="#FFFDF8" android:pathData="M42,35 h24 a3,3 0 0 1 3,3 v34 a3,3 0 0 1 -3,3 h-24 a3,3 0 0 1 -3,-3 v-34 a3,3 0 0 1 3,-3 z"/>
+    <path android:fillColor="#C0392B" android:pathData="M60.5,43 c-3.2,-2.6 -4.8,-4.2 -4.8,-5.9 c0,-1.3 1,-2.1 2.2,-2.1 c1.1,0 2,0.7 2.6,1.5 c0.6,-0.8 1.5,-1.5 2.6,-1.5 c1.2,0 2.2,0.8 2.2,2.1 c0,1.7 -1.6,3.3 -4.8,5.9 z"/>
+    <!-- front card: big black spade -->
+    <path android:fillColor="#FFFDF8" android:strokeColor="#33000000" android:strokeWidth="0.6" android:pathData="M42,45 h24 a3,3 0 0 1 3,3 v29 a3,3 0 0 1 -3,3 h-24 a3,3 0 0 1 -3,-3 v-29 a3,3 0 0 1 3,-3 z"/>
+    <path android:fillColor="#1C1C1C" android:pathData="M54,51 c-5.5,6 -9.5,8.5 -9.5,12.5 c0,3.2 3.3,4.8 6.6,3.1 l-1.6,5.4 h9 l-1.6,-5.4 c3.3,1.7 6.6,0.1 6.6,-3.1 c0,-4 -4,-6.5 -9.5,-12.5 z"/>
 </vector>

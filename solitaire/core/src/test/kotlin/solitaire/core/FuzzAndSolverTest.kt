@@ -151,3 +151,38 @@ class FuzzAndSolverTest {
         assertTrue(Daily.deal("2026-10-11").game != Daily.deal("2026-10-12").game)
     }
 }
+
+class PinnedAndLimitsTest {
+    /** Past daily deals must never change: pin a few dates to their exact deal. [BEST_PRACTICES #12h] */
+    @Test fun dailyDealsArePinned() {
+        val pins = mapOf(
+            "2026-10-11" to PIN_1011,
+            "2026-01-01" to PIN_0101,
+            "2027-02-28" to PIN_0228,
+        )
+        for ((key, want) in pins) {
+            val g = Daily.deal(key).game
+            val got = g.tableau.joinToString("|") { col -> col.joinToString(",") } + "/" + g.stock.joinToString(",")
+            assertEquals("daily $key", want, got)
+        }
+    }
+
+    /** Hint text fits two lines of the hint banner on the 360 dp screen. [BEST_PRACTICES #12c] */
+    @Test fun hintTextIsShort() {
+        val rnd = Random(9)
+        var longest = ""
+        repeat(400) {
+            var g = Klondike.deal(rnd.nextLong(), if (it % 2 == 0) 1 else 3)
+            repeat(200) {
+                g.hint()?.let { h -> if (h.text.length > longest.length) longest = h.text }
+                g = g.legalMoves().randomOrNull(rnd)?.let { m -> g.apply(m) } ?: g
+            }
+        }
+        println("longest hint (${longest.length}): $longest")
+        assertTrue(longest.length <= 72)
+    }
+}
+
+private const val PIN_1011 = "J♦|A♥,10♠|6♣,K♠,2♥|4♥,6♥,4♦,3♥|5♣,4♣,K♥,8♦,Q♦|A♠,10♣,3♦,A♣,2♦,J♥|9♥,2♠,3♠,K♣,5♦,7♣,Q♥/7♦,3♣,4♠,Q♠,9♦,10♥,8♥,8♣,7♥,A♦,Q♣,7♠,9♣,J♣,2♣,5♠,10♦,K♦,9♠,6♦,6♠,J♠,8♠,5♥"
+private const val PIN_0101 = "7♠|4♦,6♥|J♥,9♠,8♦|6♣,3♠,7♥,K♠|8♣,5♠,J♦,J♣,J♠|5♣,Q♥,4♣,6♦,K♦,5♦|5♥,10♥,3♥,9♥,8♠,Q♠,4♠/10♣,K♥,6♠,10♠,K♣,2♣,4♥,2♥,Q♣,9♦,A♣,8♥,Q♦,7♣,2♠,7♦,3♣,3♦,A♠,10♦,2♦,9♣,A♦,A♥"
+private const val PIN_0228 = "3♣|7♥,Q♣|5♠,7♠,3♥|J♣,6♥,6♠,4♣|5♣,Q♥,9♣,J♠,2♥|3♠,10♠,Q♦,8♣,7♣,9♠|8♠,10♥,6♣,5♦,J♥,4♦,3♦/K♥,Q♠,6♦,K♣,A♥,4♠,A♠,10♣,7♦,K♦,8♥,K♠,10♦,4♥,A♣,2♣,2♠,A♦,2♦,9♦,8♦,9♥,J♦,5♥"

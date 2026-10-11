@@ -115,8 +115,9 @@ private fun Header(vm: GameViewModel, g: Klondike) {
 @Composable
 private fun HeaderStat(label: String, value: String, modifier: Modifier) {
     Row(modifier, horizontalArrangement = Arrangement.Center) {
-        Text("$label ", color = P.textDim, fontSize = 15.sp, maxLines = 1, softWrap = false, modifier = Modifier.alignByBaseline())
-        Text(value, color = P.text, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, modifier = Modifier.alignByBaseline())
+        // Fixed sizes (dp, not sp): this row has exactly the screen's width to work with. [BEST_PRACTICES #12a, #12g]
+        Text("$label ", color = P.textDim, fontSize = fixedSp(15f), maxLines = 1, softWrap = false, modifier = Modifier.alignByBaseline())
+        Text(value, color = P.text, fontSize = fixedSp(21f), fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, modifier = Modifier.alignByBaseline())
     }
 }
 
@@ -143,7 +144,7 @@ private fun BarButton(icon: ImageVector, label: String, tint: Color, modifier: M
         val a = if (enabled) 1f else 0.3f
         Icon(icon, null, tint = tint.copy(alpha = a), modifier = Modifier.size(32.dp))
         Spacer(Modifier.height(2.dp))
-        Text(label, color = P.text.copy(alpha = a), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+        Text(label, color = P.text.copy(alpha = a), fontSize = fixedSp(15f), fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
     }
 }
 
@@ -196,3 +197,7 @@ private fun PanelRow(label: String, value: String) {
 /** "October 11". */
 fun dayLabel(key: String): String = LocalDate.parse(key).format(DateTimeFormatter.ofPattern("MMMM d", Locale.US))
 
+
+/** A text size that ignores the system font scale, for rows whose width is fixed by the screen. */
+@Composable
+fun fixedSp(dp: Float): androidx.compose.ui.unit.TextUnit = with(androidx.compose.ui.platform.LocalDensity.current) { dp.dp.toSp() }
