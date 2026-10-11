@@ -2,6 +2,7 @@ package dadgames.blocks
 
 import android.app.Application
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -21,6 +22,7 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import kotlin.random.Random
 
+@kotlinx.serialization.Serializable
 enum class Screen { HOME, GAME, DAILY, SETTINGS, HELP, STATS }
 
 /** One move's visual effects, keyed by [id] so the board replays them once. */
@@ -38,9 +40,37 @@ data class MoveFx(
 class GameViewModel(app: Application) : AndroidViewModel(app) {
     private val store = Store(app, "blocks")
 
-    var screen by mutableStateOf(Screen.HOME)
-    /** Where Settings / How to play go back to. */
-    var returnTo = Screen.HOME
+    /** Back stack; HOME is always at the bottom and the last entry is showing. [BEST_PRACTICES #13e] */
+    private val stack = mutableStateListOf(Screen.HOME)
+    val screen: Screen get() = stack.last()
+    val canGoBack: Boolean get() = stack.size > 1
+
+    fun go(s: Screen) {
+        if (screen != s) stack.add(s)
+        saveStack()
+    }
+
+    fun back() {
+        if (screen == Screen.GAME) { hintJob?.cancel(); hint = null }
+        if (stack.size > 1) stack.removeAt(stack.lastIndex)
+        saveStack()
+    }
+
+    /** Back to the home screen, dropping everything above it. */
+    fun home() {
+        stack.clear(); stack.add(Screen.HOME)
+        saveStack()
+    }
+
+    private fun saveStack() = store.save(viewModelScope, "stack", kotlinx.serialization.builtins.ListSerializer(Screen.serializer()), stack.toList())
+
+    /** Relaunch after Android killed the app: same screens, minus a game that no longer exists. [BEST_PRACTICES #12j] */
+    fun restoreStack() {
+        val saved = store.load("stack", kotlinx.serialization.builtins.ListSerializer(Screen.serializer())) ?: return
+        val ok = saved.filter { it != Screen.HOME && (it != Screen.GAME || game?.over == false) }
+        stack.clear(); stack.add(Screen.HOME); stack.addAll(ok)
+        if (Screen.GAME in ok) refreshStartBests()
+    }
 
     var settings by mutableStateOf(store.load("settings", AppSettings.serializer()) ?: AppSettings())
         private set
@@ -110,10 +140,18 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         store.save(viewModelScope, "playing", Mode.serializer(), mode)
         fx = null
         hint = null
+        refreshStartBests()
+        go(Screen.GAME)
+    }
+
+    private fun refreshStartBests() {
         startToday = highScores.todayBest(today())
         startEver = highScores.ever
-        screen = Screen.GAME
     }
+
+    /** A daily other than [date] has moves in it and isn't finished: starting [date] would throw it away. */
+    fun dailyAtRisk(date: LocalDate): GameState? =
+        dailyGame?.takeIf { it.date != date.toString() && !it.over && it.moves > 0 }
 
     /** Play (or continue) the daily puzzle for [date]. */
     fun playDaily(date: LocalDate, restart: Boolean = false) {
@@ -131,10 +169,12 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun leaveGame() {
-        hintJob?.cancel()
-        hint = null
-        screen = if (playing == Mode.DAILY) Screen.DAILY else Screen.HOME
+    fun leaveGame() = back()
+
+    /** End-of-daily "Calendar": back to the calendar, whichever way we came. */
+    fun toCalendar() {
+        back()
+        if (screen != Screen.DAILY) go(Screen.DAILY)
     }
 
     /** Commit a placement. Returns false if it isn't legal (the piece then goes back to the tray). */
@@ -166,7 +206,8 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     private fun finished(r: MoveResult) {
         val g = r.state
         if (g.mode == Mode.CLASSIC) recordClassic(g)
-        else if (g.won) {
+        else if (g.won && g.date!! !in daily.won) {
+            // Each date counts once, however often it's replayed. [BEST_PRACTICES #13g]
             val d = DailyProgress(daily.won + g.date!!)
             daily = d
             store.save(viewModelScope, "dailyProgress", DailyProgress.serializer(), d)
@@ -174,7 +215,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun recordClassic(g: GameState) {
+    private fun recordClassic(g: GameState, abandoned: Boolean = false) {
         val d = today()
         val record = when {
             g.score > highScores.ever -> "ever"
@@ -184,11 +225,13 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         val hs = highScores.record(g.score, d)
         highScores = hs
         store.save(viewModelScope, "high", HighScores.serializer(), hs)
-        val rec = GameRecord(System.currentTimeMillis(), g.score, g.moves, g.bestCombo, record)
+        val rec = GameRecord(System.currentTimeMillis(), g.score, g.moves, g.bestCombo, record, abandoned)
+        // An unfinished game still counts for high scores, blocks and records, but not for the average.
         saveStats(
             stats.copy(
-                played = stats.played + 1,
-                totalScore = stats.totalScore + g.score,
+                played = stats.played + if (abandoned) 0 else 1,
+                totalScore = stats.totalScore + if (abandoned) 0 else g.score,
+                abandoned = stats.abandoned + if (abandoned) 1 else 0,
                 blocksPlaced = stats.blocksPlaced + g.blocksPlaced,
                 cellsCleared = stats.cellsCleared + g.cellsCleared,
                 regionsCleared = stats.regionsCleared + g.regionsCleared,
@@ -203,7 +246,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     private fun recordUnfinished() {
         val g = classic ?: return
         if (g.over || g.moves == 0) return
-        recordClassic(g)
+        recordClassic(g, abandoned = true)
     }
 
     fun requestHint() {
@@ -237,20 +280,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         store.save(viewModelScope, "high", HighScores.serializer(), highScores)
     }
 
-    /** Remember whether he was on the board, so a relaunch after Android kills the app lands back there. */
-    fun rememberScreen() {
-        val inGame = screen == Screen.GAME || (screen in setOf(Screen.SETTINGS, Screen.HELP) && returnTo == Screen.GAME)
-        store.putBoolean("inGame", inGame)
-    }
-
-    fun restoreScreen() {
-        if (!store.getBoolean("inGame", false)) return
-        val g = game ?: return
-        if (!g.over) startPlaying(playing)
-    }
-
-    fun openSettings(from: Screen) { returnTo = from; screen = Screen.SETTINGS }
-    fun openHelp(from: Screen) { returnTo = from; screen = Screen.HELP }
+    /** High scores including the classic game in progress, for the home screen. */
+    val highScoresLive: HighScores
+        get() = classic?.takeIf { !it.over && it.moves > 0 }?.let { highScores.record(it.score, today()) } ?: highScores
 
     override fun onCleared() {
         sound?.release()

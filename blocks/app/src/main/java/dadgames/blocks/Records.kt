@@ -66,6 +66,8 @@ data class GameRecord(
     val bestCombo: Int,
     /** "ever", "today" or "" for a game that set no record. */
     val record: String = "",
+    /** Left unfinished for a new game: kept out of the average. */
+    val abandoned: Boolean = false,
 )
 
 @Serializable
@@ -78,6 +80,8 @@ data class Stats(
     val bestCombo: Int = 0,
     val bestStreak: Int = 0,
     val dailyWins: Int = 0,
+    /** Games left unfinished for a new one (not in [played] or the average). */
+    val abandoned: Int = 0,
     /** Newest first, capped at 20. */
     val recent: List<GameRecord> = emptyList(),
 ) {

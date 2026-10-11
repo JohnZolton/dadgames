@@ -97,10 +97,9 @@ data class GameState(
         return MoveResult(s, mask, regions, clearedCells, shape.size, bonus, combo, newStreak, gemsTaken, refilled)
     }
 
-    /** Deal three fresh pieces, each uniformly from the full set. */
+    /** Deal three fresh pieces with Woodoku's generator; [deals] (trays dealt so far) picks the weight stage. */
     internal fun deal(): GameState {
-        var r = rng
-        val t = List(TRAY) { val (v, n) = r.nextInt(Shapes.all.size); r = n; v }
+        val (t, r) = PieceGenerator.tray(rng, deals, board)
         return copy(tray = t, rng = r, deals = deals + 1)
     }
 

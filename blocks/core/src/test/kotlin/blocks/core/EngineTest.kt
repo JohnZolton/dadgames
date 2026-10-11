@@ -174,21 +174,6 @@ class EngineTest {
         GameState.fromJson(g.toJson().replaceFirst("{", "{\"futureField\":1,"))
     }
 
-    @Test fun dealsAreUniformAndUnrigged() {
-        val counts = IntArray(Shapes.all.size)
-        var g = GameState(rng = Rng(123))
-        val n = 49_000
-        repeat(n / TRAY + 1) { g = g.deal(); g.tray.forEach { counts[it]++ } }
-        val expected = counts.sum() / 49.0
-        // Chi-square with 48 degrees of freedom; 99.9th percentile is about 84.
-        val chi = counts.sumOf { (it - expected) * (it - expected) / expected }
-        assertTrue("chi-square $chi", chi < 84)
-        // Dealing ignores the board: an almost-full board gets the same pieces as an empty one.
-        val full = GameState(board = Bits.FULL andNot Bits.of(listOf(0)), rng = Rng(99)).deal()
-        val empty = GameState(rng = Rng(99)).deal()
-        assertEquals(empty.tray, full.tray)
-    }
-
     @Test fun gemsAreCollectedByClearingTheirCells() {
         val board = row(2, setOf(8))
         val g = GameState(mode = Mode.DAILY, board = board or Bits.of(listOf(70)), gems = Bits.of(listOf(cellOf(2, 0), 70)), gemsTotal = 2,

@@ -1,6 +1,10 @@
 package dadgames.blocks
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -94,6 +98,8 @@ class BoardGeo {
     var x = 0f
     var y = 0f
     var pitch = 1f
+    /** Top of the tray: a finger below this has no landing spot. */
+    var trayTop = Float.MAX_VALUE
 }
 
 enum class DragPhase { IDLE, DRAGGING, DROPPING, RETURNING }
@@ -112,6 +118,8 @@ class DragState {
     var cell by mutableFloatStateOf(0f)
     /** Board anchor the piece would land on, or -1. */
     var anchor by mutableIntStateOf(-1)
+    /** Where a piece that's dropping will land (kept so the clear glow stays on through the drop). */
+    var dropAnchor = -1
 
     var downX = 0f; var downY = 0f
     var fingerX = 0f; var fingerY = 0f
@@ -120,8 +128,15 @@ class DragState {
     var job: Job? = null
 
     fun clear() {
-        phase = DragPhase.IDLE; slot = -1; shape = null; anchor = -1; lift = 0f
+        phase = DragPhase.IDLE; slot = -1; shape = null; anchor = -1; dropAnchor = -1; lift = 0f
     }
+}
+
+/** Place / clear animation progress, set in the same frame as the move that starts it. [BEST_PRACTICES #13f] */
+class BoardAnim {
+    var placeP by mutableFloatStateOf(1f)
+    var clearP by mutableFloatStateOf(1f)
+    var job: Job? = null
 }
 
 @Composable
@@ -132,20 +147,42 @@ fun GameScreen(vm: GameViewModel) {
     val scope = rememberCoroutineScope()
     val geo = remember { BoardGeo() }
     val drag = remember { DragState() }
+    val anim = remember { BoardAnim() }
     var selected by remember { mutableIntStateOf(-1) }
     var tapAnchor by remember { mutableIntStateOf(-1) }
     var message by remember { mutableStateOf<String?>(null) }
     var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
     val gestures = remember { TrayGestures() }
-    val current by rememberUpdatedState(g)
+    val shake = remember { Animatable(0f) }
+    var shakeSlot by remember { mutableIntStateOf(-1) }
 
     // A new move clears any tap selection.
     LaunchedEffect(g.moves, g.deals) { selected = -1; tapAnchor = -1 }
 
     fun placeWithFeedback(slot: Int, anchor: Int): Boolean {
         val ok = vm.place(slot, anchor)
-        if (ok && vm.settings.haptics) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        return ok
+        if (!ok) return false
+        val fx = vm.fx!!
+        anim.job?.cancel()
+        anim.placeP = 0f
+        if (!fx.cleared.isEmpty) anim.clearP = 0f else anim.clearP = 1f
+        anim.job = scope.launch {
+            launch { animate(0f, 1f, animationSpec = tween(180)) { v, _ -> anim.placeP = v } }
+            if (!fx.cleared.isEmpty) animate(0f, 1f, animationSpec = tween(560, easing = LinearEasing)) { v, _ -> anim.clearP = v }
+        }
+        if (vm.settings.haptics) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        return true
+    }
+
+    fun shakeTray(slot: Int, why: String) {
+        shakeSlot = slot
+        message = why
+        scope.launch {
+            shake.snapTo(0f)
+            shake.animateTo(0f, keyframes { durationMillis = 360; 1f at 60; -1f at 140; 0.7f at 220; -0.4f at 290 })
+            delay(1200)
+            if (message == why) message = null
+        }
     }
 
     // Status messages for combos, streaks, gems and records.
@@ -153,7 +190,7 @@ fun GameScreen(vm: GameViewModel) {
         val fx = vm.fx ?: return@LaunchedEffect
         val parts = buildList {
             if (!fx.gems.isEmpty) add(if (fx.gems.count == 1) "Gem collected!" else "${fx.gems.count} gems collected!")
-            if (fx.combo >= 2) add("Combo x${fx.combo}")
+            if (fx.combo >= 2) add("${fx.combo} lines at once!")
             if (fx.streak >= 2) add("Streak ${fx.streak}")
         }
         if (parts.isNotEmpty()) { message = parts.joinToString("   "); delay(1800); message = null }
@@ -162,6 +199,7 @@ fun GameScreen(vm: GameViewModel) {
     var shownEver by remember { mutableStateOf(g.mode != Mode.CLASSIC || g.score > vm.startEver) }
     LaunchedEffect(g.score) {
         if (g.mode != Mode.CLASSIC) return@LaunchedEffect
+        // Only a real record: beating a best that exists (the first game of a day has nothing to beat).
         val text = when {
             !shownEver && vm.startEver > 0 && g.score > vm.startEver -> { shownEver = true; shownToday = true; "New best ever!" }
             !shownToday && vm.startToday > 0 && g.score > vm.startToday -> { shownToday = true; "New best today!" }
@@ -170,51 +208,85 @@ fun GameScreen(vm: GameViewModel) {
         if (text != null) { delay(300); message = text; delay(3000); if (message == text) message = null }
     }
 
+    // Home, the notification shade or a call cancels a drag: the piece goes back. [BEST_PRACTICES #13d]
+    val windowInfo = LocalWindowInfo.current
+    LaunchedEffect(Unit) {
+        snapshotFlow { windowInfo.isWindowFocused }.collect { focused -> if (!focused) gestures.cancel() }
+    }
+
     BoxWithConstraints(Modifier.fillMaxSize().woodBackground()) {
         val sidePad = 8.dp
-        val boardSize = min(maxWidth - sidePad * 2, maxHeight * 0.5f)
+        // Fixed parts: top bar 76, status 34, tray 116, bottom bar ~64, system bars ~72, and at least 56 between
+        // board and tray so the finger can place on the bottom row while still above the tray.
+        val boardSize = min(maxWidth - sidePad * 2, maxHeight - 418.dp)
         Column(Modifier.fillMaxSize().systemBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
             TopBar(vm, g)
             StatusLine(vm, g, selected, tapAnchor, message)
-            Board(vm, g, drag, geo, boardSize, selected, tapAnchor) { cell ->
+            Board(vm, g, drag, geo, anim, boardSize, selected, tapAnchor) { cell ->
                 // Tap-to-place: first tap shows the shadow, a tap on the shadow places it.
+                val now = vm.game ?: return@Board
                 val hint = vm.hint
                 if (selected < 0) {
-                    if (hint != null && g.preview(hint.slot, hint.anchor)?.cells?.get(cell) == true) placeWithFeedback(hint.slot, hint.anchor)
+                    if (hint != null && now.preview(hint.slot, hint.anchor)?.cells?.get(cell) == true) placeWithFeedback(hint.slot, hint.anchor)
                     return@Board
                 }
-                val shape = Shapes[g.tray[selected]]
-                val current = if (tapAnchor >= 0) g.preview(selected, tapAnchor) else null
+                if (now.tray[selected] < 0) { selected = -1; tapAnchor = -1; return@Board }
+                val shape = Shapes[now.tray[selected]]
+                val current = if (tapAnchor >= 0) now.preview(selected, tapAnchor) else null
                 if (current != null && current.cells[cell]) {
                     placeWithFeedback(selected, tapAnchor)
                     selected = -1; tapAnchor = -1
                 } else {
-                    tapAnchor = anchorCovering(g, selected, shape, cell)
+                    val a = anchorCovering(now, selected, shape, cell)
+                    if (a < 0) shakeTray(selected, "It doesn't fit there")
+                    tapAnchor = a
                 }
             }
-            Spacer(Modifier.height(10.dp))
-            Tray(vm, g, drag, geo, selected, gestures)
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.weight(1f).heightIn(min = 56.dp))
+            Tray(vm, g, drag, geo, selected, gestures, shakeSlot, shake.value)
             BottomBar(vm, g)
         }
 
-        // Gesture callbacks from the tray (root px). They read the latest game through `current`.
-        gestures.grab = { slot, x, y ->
-            drag.job?.cancel()
+        // Gesture callbacks from the tray (root px). They always read the latest game from the view model.
+        fun recomputeNow() = vm.game?.let { recompute(drag, geo, it, density.density) }
+
+        /** A new grab while the last piece is still animating: finish that animation now. */
+        fun finishAnimation() {
+            when (drag.phase) {
+                DragPhase.DROPPING -> {
+                    drag.job?.cancel()
+                    val s = drag.slot; val a = drag.dropAnchor
+                    drag.clear()
+                    placeWithFeedback(s, a)
+                }
+                DragPhase.RETURNING -> { drag.job?.cancel(); drag.clear() }
+                else -> {}
+            }
+        }
+        gestures.grab = grab@{ slot, x, y, trayX, trayY, trayCell ->
+            if (drag.phase == DragPhase.DRAGGING) return@grab false
+            finishAnimation()
+            val now = vm.game ?: return@grab false
+            if (now.over || now.tray[slot] < 0) return@grab false
             selected = -1; tapAnchor = -1
-            drag.slot = slot; drag.shape = Shapes[current.tray[slot]]
+            drag.slot = slot; drag.shape = Shapes[now.tray[slot]]
+            drag.trayX = trayX; drag.trayY = trayY; drag.trayCell = trayCell
             drag.downX = x; drag.downY = y; drag.fingerX = x; drag.fingerY = y
             drag.lift = 0f
             drag.phase = DragPhase.DRAGGING
-            recompute(drag, geo, current, density.density)
+            recomputeNow()
             drag.job = scope.launch {
                 animate(0f, 1f, animationSpec = tween(140, easing = FastOutSlowInEasing)) { v, _ ->
-                    drag.lift = v; recompute(drag, geo, current, density.density)
+                    drag.lift = v; recomputeNow()
                 }
             }
+            true
         }
         gestures.move = { x, y ->
-            drag.fingerX = x; drag.fingerY = y; recompute(drag, geo, current, density.density)
+            if (drag.phase == DragPhase.DRAGGING) { drag.fingerX = x; drag.fingerY = y; recomputeNow() }
+        }
+        gestures.cancel = {
+            if (drag.phase == DragPhase.DRAGGING) { drag.job?.cancel(); glideBack(drag, scope) }
         }
         gestures.release = release@{ tap ->
             if (drag.phase != DragPhase.DRAGGING) return@release
@@ -226,6 +298,7 @@ fun GameScreen(vm: GameViewModel) {
                 glideBack(drag, scope)
             } else if (a >= 0) {
                 drag.phase = DragPhase.DROPPING
+                drag.dropAnchor = a
                 val fx = drag.x; val fy = drag.y; val fc = drag.cell
                 val tx = geo.x + colOf(a) * geo.pitch
                 val ty = geo.y + rowOf(a) * geo.pitch
@@ -233,7 +306,9 @@ fun GameScreen(vm: GameViewModel) {
                     animate(0f, 1f, animationSpec = tween(90, easing = LinearEasing)) { v, _ ->
                         drag.x = lerp(fx, tx, v); drag.y = lerp(fy, ty, v); drag.cell = lerp(fc, geo.pitch, v)
                     }
-                    if (placeWithFeedback(slot, a)) drag.clear() else glideBack(drag, scope)
+                    // Clear and place in the same frame so nothing flashes.
+                    drag.clear()
+                    if (!placeWithFeedback(slot, a)) Unit
                 }
             } else glideBack(drag, scope)
         }
@@ -269,19 +344,27 @@ private fun anchorCovering(g: GameState, slot: Int, shape: Shape, cell: Int): In
         .firstOrNull { g.canPlace(slot, it) } ?: -1
 }
 
+/** Gap between the fingertip and the bottom of the lifted piece: as large as fits above the tray. */
+private fun liftGap(geo: BoardGeo, density: Float): Float {
+    val room = geo.trayTop - (geo.y + geo.pitch * SIZE) - 14f * density
+    return room.coerceIn(30f * density, geo.pitch * 0.9f + 26f * density)
+}
+
 /** Where the lifted piece sits for the current finger position, and where it would land. */
 private fun recompute(d: DragState, geo: BoardGeo, g: GameState, density: Float) {
     val shape = d.shape ?: return
     val bc = geo.pitch
-    // Fully lifted: board-cell size, centred over the finger, bottom edge well above the fingertip.
+    // Fully lifted: board-cell size, centred over the finger, bottom edge above the fingertip.
     val tx = d.fingerX - shape.cols * bc / 2f
-    val ty = d.fingerY - shape.rows * bc - (bc * 0.9f + 26f * density)
+    val ty = d.fingerY - shape.rows * bc - liftGap(geo, density)
     // In the tray, following the finger from where it was grabbed.
     val sx = d.trayX + (d.fingerX - d.downX)
     val sy = d.trayY + (d.fingerY - d.downY)
     d.x = lerp(sx, tx, d.lift)
     d.y = lerp(sy, ty, d.lift)
     d.cell = lerp(d.trayCell, bc, d.lift)
+    // No landing spot while the finger is still over the tray: picking up and letting go is always safe.
+    if (d.fingerY >= geo.trayTop) { d.anchor = -1; return }
     // Snap using the fully-lifted position so the shadow doesn't wander during the lift.
     val c = ((tx - geo.x) / bc).roundToInt()
     val r = ((ty - geo.y) / bc).roundToInt()
@@ -303,9 +386,11 @@ private fun glideBack(d: DragState, scope: kotlinx.coroutines.CoroutineScope) {
 
 /** Callbacks from tray gestures to the screen (reassigned every composition, read during gestures). */
 class TrayGestures {
-    var grab: (slot: Int, x: Float, y: Float) -> Unit = { _, _, _ -> }
+    /** Returns false if the grab isn't accepted (empty slot, another piece still held). */
+    var grab: (slot: Int, x: Float, y: Float, trayX: Float, trayY: Float, trayCell: Float) -> Boolean = { _, _, _, _, _, _ -> false }
     var move: (Float, Float) -> Unit = { _, _ -> }
     var release: (tap: Boolean) -> Unit = {}
+    var cancel: () -> Unit = {}
 }
 
 // ---------------------------------------------------------------- top bar
@@ -313,7 +398,7 @@ class TrayGestures {
 @Composable
 private fun TopBar(vm: GameViewModel, g: GameState) {
     Row(
-        Modifier.fillMaxWidth().height(84.dp).padding(horizontal = 10.dp),
+        Modifier.fillMaxWidth().height(76.dp).padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         WoodIconButton(Icon.BACK, "Back") { vm.leaveGame() }
@@ -328,13 +413,13 @@ private fun TopBar(vm: GameViewModel, g: GameState) {
         Spacer(Modifier.width(10.dp))
         if (g.mode == Mode.CLASSIC) TodayBox(vm, g, shown) else GemBox(g)
         Spacer(Modifier.weight(1f))
-        WoodIconButton(Icon.GEAR, "Settings") { vm.openSettings(Screen.GAME) }
+        WoodIconButton(Icon.GEAR, "Settings") { vm.go(Screen.SETTINGS) }
     }
 }
 
 @Composable
 private fun TodayBox(vm: GameViewModel, g: GameState, shownScore: Int) {
-    val beat = g.score > vm.startToday
+    val beat = vm.startToday > 0 && g.score > vm.startToday
     // Follows the counting-up score so the two boxes agree.
     val value = maxOf(vm.startToday, shownScore)
     Box(contentAlignment = Alignment.TopCenter) {
@@ -349,7 +434,7 @@ private fun TodayBox(vm: GameViewModel, g: GameState, shownScore: Int) {
             Text("$value", color = ink, fontSize = 24.fixedSp, fontWeight = FontWeight.Bold, lineHeight = 26.fixedSp, maxLines = 1)
         }
         // Crown sits on the top edge, like Woodoku's.
-        IconGlyph(Icon.CROWN, 22.dp, if (beat) Wood.glow else Wood.crown, Modifier.offset(y = (-15).dp))
+        IconGlyph(Icon.CROWN, 22.dp, if (beat) Color(0xFF7A3E12) else Wood.crown, Modifier.offset(y = (-15).dp))
     }
 }
 
@@ -379,10 +464,10 @@ private fun StatusLine(vm: GameViewModel, g: GameState, selected: Int, tapAnchor
         g.moves == 0 -> "Drag a piece onto the board" to false
         // Once a record falls it stays on screen for the rest of the game.
         g.score > vm.startEver -> "New best ever!" to true
-        g.score > vm.startToday -> "New best today!" to false
+        vm.startToday > 0 && g.score > vm.startToday -> "New best today!" to false
         else -> "" to false
     }
-    Box(Modifier.fillMaxWidth().height(40.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxWidth().height(34.dp), contentAlignment = Alignment.Center) {
         Text(
             text, color = if (strong) Color(0xFFFFE08A) else Color(0xE6FFF1DD), fontSize = if (strong) 20.fixedSp else 18.fixedSp,
             fontWeight = if (strong) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, softWrap = false, textAlign = TextAlign.Center,
@@ -394,19 +479,12 @@ private fun StatusLine(vm: GameViewModel, g: GameState, selected: Int, tapAnchor
 
 @Composable
 private fun Board(
-    vm: GameViewModel, g: GameState, drag: DragState, geo: BoardGeo, boardSize: androidx.compose.ui.unit.Dp,
+    vm: GameViewModel, g: GameState, drag: DragState, geo: BoardGeo, anim: BoardAnim, boardSize: androidx.compose.ui.unit.Dp,
     selected: Int, tapAnchor: Int, onTapCell: (Int) -> Unit,
 ) {
     val density = LocalDensity.current
     val framePx = with(density) { 6.dp.toPx() }
-    val clearT = remember { Animatable(1f) }
-    val placeT = remember { Animatable(1f) }
     val fx = vm.fx
-    LaunchedEffect(fx?.id) {
-        if (fx == null || System.currentTimeMillis() - fx.time > 400) return@LaunchedEffect
-        launch { placeT.snapTo(0f); placeT.animateTo(1f, tween(180)) }
-        if (!fx.cleared.isEmpty) { clearT.snapTo(0f); clearT.animateTo(1f, tween(560, easing = LinearEasing)) }
-    }
     val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
         0.35f, 0.75f, infiniteRepeatable(tween(650), RepeatMode.Reverse), label = "pulse",
     )
@@ -449,8 +527,10 @@ private fun Board(
 
             // Which shadow to show: the dragged piece, the tap-to-place choice, or the hint.
             val dragging = drag.phase == DragPhase.DRAGGING && drag.anchor >= 0
+            val dropping = drag.phase == DragPhase.DROPPING && drag.dropAnchor >= 0
             val preview = when {
                 dragging -> g.preview(drag.slot, drag.anchor)
+                dropping -> g.preview(drag.slot, drag.dropAnchor)
                 selected >= 0 && tapAnchor >= 0 -> g.preview(selected, tapAnchor)
                 hint != null && drag.phase == DragPhase.IDLE && selected < 0 -> g.preview(hint.slot, hint.anchor)
                 else -> null
@@ -462,27 +542,27 @@ private fun Board(
                 if (!g.board[cell]) continue
                 var s = bs
                 var off = 0f
-                if (fx != null && fx.placed[cell] && placeT.value < 1f) {
-                    val k = 1f + 0.08f * (1f - placeT.value)
+                if (fx != null && fx.placed[cell] && anim.placeP < 1f) {
+                    val k = 1f + 0.08f * (1f - anim.placeP)
                     off = (bs * k - bs) / 2f; s = bs * k
                 }
                 woodBlock(cx(cell) + inset - off, cy(cell) + inset - off, s, glow = clearing[cell])
                 if (g.gems[cell]) gem(cx(cell) + inset, cy(cell) + inset, bs)
             }
-            if (preview != null) {
+            if (preview != null && !dropping) {
                 val a = if (dragging || selected >= 0) 0.5f else pulse
                 for (cell in preview.cells.cells()) {
                     woodBlock(cx(cell) + inset, cy(cell) + inset, bs, alpha = a, glow = clearing[cell])
                 }
             }
             // Clear animation: blocks shrink and fade in a wave spreading from where the piece landed.
-            if (fx != null && clearT.value < 1f && !fx.cleared.isEmpty) {
+            if (fx != null && anim.clearP < 1f && !fx.cleared.isEmpty) {
                 val pc = fx.placed.cells()
                 val pr = pc.map { rowOf(it) }.average().toFloat()
                 val pcol = pc.map { colOf(it) }.average().toFloat()
                 for (cell in fx.cleared.cells()) {
                     val dist = kotlin.math.hypot(rowOf(cell) - pr, colOf(cell) - pcol) / 11f
-                    val p = ((clearT.value * 1.6f) - dist).coerceIn(0f, 1f)
+                    val p = ((anim.clearP * 1.6f) - dist).coerceIn(0f, 1f)
                     if (p >= 1f) continue
                     val k = 1f - p
                     val s = bs * (0.4f + 0.6f * k)
@@ -530,6 +610,7 @@ private fun PointsFloater(fx: MoveFx, framePx: Float) {
 @Composable
 private fun Tray(
     vm: GameViewModel, g: GameState, drag: DragState, geo: BoardGeo, selected: Int, gestures: TrayGestures,
+    shakeSlot: Int, shake: Float,
 ) {
     val density = LocalDensity.current
     val hint = vm.hint
@@ -546,35 +627,46 @@ private fun Tray(
     val pulse by rememberInfiniteTransition(label = "trayPulse").animateFloat(
         0f, 1f, infiniteRepeatable(tween(650), RepeatMode.Reverse), label = "trayPulse",
     )
-    Row(Modifier.fillMaxWidth().height(150.dp).padding(horizontal = 8.dp)) {
+    Row(
+        Modifier.fillMaxWidth().height(116.dp).padding(horizontal = 8.dp)
+            .onGloballyPositioned { geo.trayTop = it.positionInRoot().y },
+    ) {
         for (slot in 0 until 3) {
             var origin by remember { mutableStateOf(Offset.Zero) }
             val id = g.tray[slot]
             Box(
                 Modifier.weight(1f).fillMaxHeight()
                     .onGloballyPositioned { origin = it.positionInRoot() }
-                    .pointerInput(slot, id, g.over) {
-                        if (id < 0 || g.over) return@pointerInput
-                        val shape = Shapes[id]
+                    .pointerInput(slot) {
                         awaitEachGesture {
                             val down = awaitFirstDown()
-                            if (drag.phase != DragPhase.IDLE) return@awaitEachGesture
-                            down.consume()
+                            // Always read the latest game: the slot may have changed since this was composed.
+                            val now = vm.game ?: return@awaitEachGesture
+                            val sid = now.tray[slot]
+                            if (sid < 0 || now.over) return@awaitEachGesture
+                            val shape = Shapes[sid]
                             val trayCell = geo.pitch * 0.55f
-                            drag.trayCell = trayCell
-                            drag.trayX = origin.x + (size.width - shape.cols * trayCell) / 2f + slide[slot].value * size.width * 3f
-                            drag.trayY = origin.y + (size.height - shape.rows * trayCell) / 2f
-                            gestures.grab(slot, origin.x + down.position.x, origin.y + down.position.y)
+                            val tx = origin.x + (size.width - shape.cols * trayCell) / 2f + slide[slot].value * size.width * 3f
+                            val ty = origin.y + (size.height - shape.rows * trayCell) / 2f
+                            if (!gestures.grab(slot, origin.x + down.position.x, origin.y + down.position.y, tx, ty, trayCell)) return@awaitEachGesture
+                            down.consume()
                             var moved = false
+                            var cancelled = false
                             while (true) {
                                 val ev = awaitPointerEvent()
-                                val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
-                                if (!ch.pressed) break
-                                ch.consume()
+                                val ch = ev.changes.firstOrNull { it.id == down.id }
+                                if (ch == null) { cancelled = true; break }
+                                // Compose reports a cancelled gesture as a release with no time passing and no movement.
+                                if (!ch.pressed && ch.uptimeMillis == ch.previousUptimeMillis && ch.position == ch.previousPosition) {
+                                    cancelled = true; break
+                                }
+                                // Every event, the up event included, sets the position from the absolute pointer. [#12s, #13d]
                                 if ((ch.position - down.position).getDistance() > viewConfiguration.touchSlop) moved = true
                                 gestures.move(origin.x + ch.position.x, origin.y + ch.position.y)
+                                ch.consume()
+                                if (!ch.pressed) break
                             }
-                            gestures.release(!moved)
+                            if (cancelled) gestures.cancel() else gestures.release(!moved)
                         }
                     },
             ) {
@@ -582,7 +674,8 @@ private fun Tray(
                     val shape = Shapes[id]
                     val glow = selected == slot || hint?.slot == slot
                     val fits = slot in playable
-                    Canvas(Modifier.fillMaxSize().graphicsLayer { translationX = slide[slot].value * size.width * 3f }) {
+                    val shakePx = if (slot == shakeSlot) shake * with(density) { 10.dp.toPx() } else 0f
+                    Canvas(Modifier.fillMaxSize().graphicsLayer { translationX = slide[slot].value * size.width * 3f + shakePx }) {
                         val c = geo.pitch * 0.55f
                         val ox = (size.width - shape.cols * c) / 2f
                         val oy = (size.height - shape.rows * c) / 2f
@@ -609,7 +702,7 @@ private fun Tray(
 @Composable
 private fun BottomBar(vm: GameViewModel, g: GameState) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
     ) {
         if (g.mode == Mode.DAILY) {
@@ -647,10 +740,10 @@ private fun EndPanel(vm: GameViewModel, g: GameState) {
                 MiniStat("Best ever", vm.highScores.ever)
             }
             Spacer(Modifier.height(10.dp))
-            Text("${g.cellsCleared} blocks cleared\nBiggest combo ${g.bestCombo}", color = P.textDim, fontSize = 15.sp, textAlign = TextAlign.Center)
+            Text("${g.cellsCleared} blocks cleared\nMost lines at once: ${g.bestCombo}", color = P.textDim, fontSize = 15.sp, textAlign = TextAlign.Center)
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SecondaryButton("Menu", Modifier.weight(0.8f)) { vm.leaveGame() }
+                SecondaryButton("Menu", Modifier.weight(0.8f)) { vm.home() }
                 PrimaryButton("Play again", Modifier.weight(1.2f)) { vm.newGame() }
             }
         }
@@ -669,7 +762,7 @@ private fun EndPanel(vm: GameViewModel, g: GameState) {
             }
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SecondaryButton("Calendar", Modifier.weight(1f)) { vm.leaveGame() }
+                SecondaryButton("Calendar", Modifier.weight(1f)) { vm.toCalendar() }
                 if (!g.won) PrimaryButton("Try again", Modifier.weight(1f)) { vm.playDaily(java.time.LocalDate.parse(g.date), restart = true) }
             }
         }

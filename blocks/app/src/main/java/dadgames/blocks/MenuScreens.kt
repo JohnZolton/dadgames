@@ -30,6 +30,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -98,10 +102,16 @@ fun HomeScreen(vm: GameViewModel) {
             HighScoresCard(vm)
             Spacer(Modifier.height(22.dp))
             val c = vm.classic
+            var confirmNew by remember { mutableStateOf(false) }
             if (vm.canResume && c != null) {
                 ContinueButton(c.score) { vm.resume() }
                 Spacer(Modifier.height(12.dp))
-                BigButton("New game", primary = false) { vm.newGame() }
+                BigButton("New game", primary = false) { confirmNew = true }
+                if (confirmNew) ConfirmDialog(
+                    "Start a new game?",
+                    "Your game in progress (score ${c.score}) will end. Its score still counts toward your high scores.",
+                    "New game", onConfirm = { confirmNew = false; vm.newGame() }, onDismiss = { confirmNew = false },
+                )
             } else {
                 BigButton("New game", primary = true) { vm.newGame() }
             }
@@ -109,10 +119,10 @@ fun HomeScreen(vm: GameViewModel) {
             DailyCard(vm)
             Spacer(Modifier.height(18.dp))
             Row(Modifier.widthIn(max = 420.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(Modifier.weight(1f)) { BigButton("Stats", primary = false) { vm.screen = Screen.STATS } }
-                Box(Modifier.weight(1f)) { BigButton("Settings", primary = false) { vm.openSettings(Screen.HOME) } }
+                Box(Modifier.weight(1f)) { BigButton("Stats", primary = false) { vm.go(Screen.STATS) } }
+                Box(Modifier.weight(1f)) { BigButton("Settings", primary = false) { vm.go(Screen.SETTINGS) } }
             }
-            TextButton({ vm.openHelp(Screen.HOME) }) { Text("How to play", color = P.textDim, fontSize = 17.sp) }
+            TextButton({ vm.go(Screen.HELP) }) { Text("How to play", color = P.textDim, fontSize = 17.sp) }
         }
     }
 }
@@ -134,7 +144,8 @@ fun Logo(size: Dp) {
 @Composable
 private fun HighScoresCard(vm: GameViewModel) {
     val d = vm.today()
-    val hs = vm.highScores
+    // Includes the game in progress, so a score he's on his way to shows up here too.
+    val hs = vm.highScoresLive
     WoodCard {
         Text("MY HIGH SCORES", color = cardInk, fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         Spacer(Modifier.height(10.dp))
@@ -165,6 +176,8 @@ private fun DailyCard(vm: GameViewModel) {
     val today = vm.today()
     val wins = vm.daily.winsIn(today.toString().substring(0, 7))
     val solved = today.toString() in vm.daily.won
+    var confirmDaily by remember { mutableStateOf(false) }
+    if (confirmDaily) DailyConfirm(vm, today) { confirmDaily = false }
     WoodCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconGlyph(Icon.GEM, 26.dp, Wood.gem)
@@ -176,11 +189,17 @@ private fun DailyCard(vm: GameViewModel) {
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PrimaryButton(
-                when { vm.preparing -> "Setting up…"; solved -> "Solved today"; else -> "Play today" },
+                when { vm.preparing -> "Loading…"; solved -> "Solved!"; else -> "Play today" },
                 Modifier.weight(1.2f), enabled = !vm.preparing,
-            ) { if (solved) { vm.calendarDate = today; vm.screen = Screen.DAILY } else vm.playDaily(today) }
+            ) {
+                when {
+                    solved -> { vm.calendarDate = today; vm.go(Screen.DAILY) }
+                    vm.dailyAtRisk(today) != null -> confirmDaily = true
+                    else -> vm.playDaily(today)
+                }
+            }
             OutlinedButton(
-                { vm.calendarDate = today; vm.screen = Screen.DAILY }, Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(50),
+                { vm.calendarDate = today; vm.go(Screen.DAILY) }, Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(50),
                 border = BorderStroke(2.dp, cardInk.copy(alpha = 0.6f)),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = cardInk),
                 contentPadding = PaddingValues(horizontal = 12.dp),
@@ -220,11 +239,11 @@ fun DailyScreen(vm: GameViewModel) {
     val today = vm.today()
     val sel = vm.calendarDate
     var month = sel.withDayOfMonth(1)
-    ScreenScaffold("Daily challenge", onBack = { vm.screen = Screen.HOME }) {
+    ScreenScaffold("Daily challenge", onBack = { vm.back() }) {
         Spacer(Modifier.height(8.dp))
         WoodCard {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                MonthArrow("‹", "Previous month", enabled = true) { vm.calendarDate = month.minusMonths(1) }
+                MonthArrow("‹", "Previous month", enabled = month > FIRST_DAILY) { vm.calendarDate = month.minusMonths(1) }
                 Text(
                     "${month.month.getDisplayName(TextStyle.FULL, Locale.US)} ${month.year}",
                     color = cardInk, fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
@@ -276,8 +295,14 @@ fun DailyScreen(vm: GameViewModel) {
             solved -> "Play $name again"
             else -> "Play $name"
         }
+        var confirm by remember { mutableStateOf(false) }
+        if (confirm) DailyConfirm(vm, sel) { confirm = false }
         BigButton(label, primary = true, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-            if (!vm.preparing) vm.playDaily(sel, restart = !inProgress)
+            when {
+                vm.preparing -> {}
+                vm.dailyAtRisk(sel) != null -> confirm = true
+                else -> vm.playDaily(sel, restart = !inProgress)
+            }
         }
         Spacer(Modifier.height(10.dp))
         Text(
@@ -336,14 +361,14 @@ private fun DayCell(vm: GameViewModel, day: LocalDate, today: LocalDate, sel: Lo
 @Composable
 fun SettingsScreen(vm: GameViewModel) {
     val s = vm.settings
-    ScreenScaffold("Settings", onBack = { vm.screen = vm.returnTo }) {
+    ScreenScaffold("Settings", onBack = { vm.back() }) {
         Section("Game") {
             Toggle("Sound", "Wooden clicks when you place a piece, a chime when you clear.", s.sound) { vm.updateSettings(s.copy(sound = it)) }
             Toggle("Vibration", "A small buzz when a piece drops onto the board.", s.haptics) { vm.updateSettings(s.copy(haptics = it)) }
         }
         Section("Help") {
             Row(
-                Modifier.fillMaxWidth().clickable { vm.openHelp(Screen.SETTINGS) }.padding(horizontal = 16.dp, vertical = 14.dp),
+                Modifier.fillMaxWidth().clickable { vm.go(Screen.HELP) }.padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
@@ -368,7 +393,7 @@ fun SettingsScreen(vm: GameViewModel) {
 
 @Composable
 fun HelpScreen(vm: GameViewModel) {
-    ScreenScaffold("How to play", onBack = { vm.screen = vm.returnTo }) {
+    ScreenScaffold("How to play", onBack = { vm.back() }) {
         Section("The game") {
             HelpLine("Drag a piece from the tray onto the board. It floats above your finger and a shadow shows where it will land.")
             HelpLine("Fill a whole row, column or 3x3 box to clear it.")
@@ -408,7 +433,7 @@ fun StatsScreen(vm: GameViewModel) {
     val s = vm.stats
     val hs = vm.highScores
     val d = vm.today()
-    ScreenScaffold("Stats", onBack = { vm.screen = Screen.HOME }) {
+    ScreenScaffold("Stats", onBack = { vm.back() }) {
         Section("High scores") {
             Column(Modifier.padding(horizontal = 10.dp)) {
                 TileRow(Tile("${hs.ever}", "Best ever", highlight = true), Tile("${hs.yearBest(d)}", "This year"))
@@ -419,7 +444,7 @@ fun StatsScreen(vm: GameViewModel) {
         Section("Games") {
             Column(Modifier.padding(horizontal = 10.dp)) {
                 TileRow(Tile("${s.played}", "Games played"), Tile("%,d".format(s.cellsCleared), "Blocks cleared"))
-                TileRow(Tile("${s.bestCombo}", "Biggest combo"), Tile("${s.bestStreak}", "Longest streak"))
+                TileRow(Tile("${s.bestCombo}", "Most lines at once"), Tile("${s.bestStreak}", "Longest streak"))
                 TileRow(Tile("%,d".format(s.regionsCleared), "Lines and boxes"), Tile("${s.dailyWins}", "Daily wins"))
             }
         }
@@ -431,7 +456,10 @@ fun StatsScreen(vm: GameViewModel) {
             for (r in s.recent) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(fmt.format(java.util.Date(r.time)), color = P.textDim, fontSize = 15.sp, modifier = Modifier.weight(1f), maxLines = 1)
-                    if (r.record.isNotEmpty()) {
+                    if (r.abandoned) {
+                        Text("Unfinished", color = P.textDim, fontSize = 14.sp, maxLines = 1)
+                        Spacer(Modifier.width(10.dp))
+                    } else if (r.record.isNotEmpty()) {
                         Text(if (r.record == "ever") "Best ever" else "Best today", color = P.accent, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                         Spacer(Modifier.width(10.dp))
                     }
@@ -454,4 +482,33 @@ private fun ContinueButton(score: Int, onClick: () -> Unit) {
             Text("Score $score", fontSize = 15.sp, maxLines = 1, softWrap = false)
         }
     }
+}
+
+/** The first month with daily puzzles (when the app arrived); the calendar doesn't go back further. */
+val FIRST_DAILY: LocalDate = LocalDate.of(2026, 10, 1)
+
+/** Asks before anything that throws away a game in progress, saying what it costs. [BEST_PRACTICES #13c] */
+@Composable
+fun ConfirmDialog(title: String, text: String, confirmLabel: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = P.panel,
+        title = { Text(title, color = P.accent, fontSize = 22.sp, fontWeight = FontWeight.Bold) },
+        text = { Text(text, color = P.text, fontSize = 18.sp, lineHeight = 25.sp) },
+        confirmButton = { PrimaryButton(confirmLabel, onClick = onConfirm) },
+        dismissButton = { dadgames.ui.SecondaryButton("Keep playing", onClick = onDismiss) },
+    )
+}
+
+/** Starting a different day's daily while another has progress. */
+@Composable
+private fun DailyConfirm(vm: GameViewModel, date: LocalDate, onDone: () -> Unit) {
+    val other = vm.dailyAtRisk(date) ?: return onDone()
+    val otherDay = LocalDate.parse(other.date)
+    val name = "${otherDay.month.getDisplayName(TextStyle.FULL, Locale.US)} ${otherDay.dayOfMonth}"
+    ConfirmDialog(
+        "Leave $name's puzzle?",
+        "You have ${other.gemsCollected} of ${other.gemsTotal} gems in $name's puzzle. Starting another day loses that progress.",
+        "Start", onConfirm = { onDone(); vm.playDaily(date, restart = true) }, onDismiss = onDone,
+    )
 }

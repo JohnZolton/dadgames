@@ -9,7 +9,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
-import androidx.compose.runtime.LaunchedEffect
 import dadgames.ui.DadTheme
 import dadgames.ui.GamePalette
 
@@ -23,17 +22,10 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         // Relaunched after Android killed us mid-game: go straight back to the board.
-        if (savedInstanceState == null) vm.restoreScreen()
+        if (savedInstanceState == null) vm.restoreStack()
         setContent {
             DadTheme(GamePalette.Wood) {
-                LaunchedEffect(vm.screen) { vm.rememberScreen() }
-                BackHandler(enabled = vm.screen != Screen.HOME) {
-                    when (vm.screen) {
-                        Screen.GAME -> vm.leaveGame()
-                        Screen.SETTINGS, Screen.HELP -> vm.screen = vm.returnTo
-                        else -> vm.screen = Screen.HOME
-                    }
-                }
+                BackHandler(enabled = vm.canGoBack) { vm.back() }
                 Crossfade(vm.screen, animationSpec = tween(200), label = "screen") { s ->
                     when (s) {
                         Screen.HOME -> HomeScreen(vm)
