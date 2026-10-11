@@ -94,6 +94,10 @@ Origin of each rule in brackets.
 13f. Set an animation's starting state in the **same frame** as the move that triggers it; animations
     started in `LaunchedEffect` begin a frame late and flash. [Blocks review]
 13g. Counters for replayable content (dailies) count each date once. [Blocks, Solitaire, Sudoku reviews]
+13i. Make the gap between the play area and the source (tray/hand) the flexible part of the layout, so
+    "no drop over the source" and "every target is reachable" both hold. [Blocks]
+13j. Script taps and drags with motion events (down, pause, up), never zero-length `input tap`; move
+    the emulator clock (`adb root` + `date`) to test daily/weekly rollovers, then clear app data. [Blocks]
 13h. **When the original's exact rules matter (scoring, generation), decompile the original APK**
     instead of guessing (Unity IL2CPP: Il2CppDumper + capstone). It recovered his Solitaire formula
     exactly. [Solitaire scoring]
