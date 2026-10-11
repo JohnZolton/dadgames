@@ -1,7 +1,7 @@
 # Research: Dad's phone (Galaxy S21 FE, SM-G990U2, Android 16)
 
 Captured 2026-10-11 over wireless adb. Screenshots in `shots/` (w = Woodoku, s = Solitaire,
-b = Blackjack, k = Sudoku). Screen: 1080x2340 @ 480 dpi (~411 x 891 dp), **3-button navigation bar**
+b = Blackjack, k = Sudoku). Screen: 1080x2340 @ 480 dpi (~360 x 780 dp), **3-button navigation bar**
 (apps must pad for it).
 
 ## What he actually plays (usage stats)
