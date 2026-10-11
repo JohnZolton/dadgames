@@ -3,31 +3,55 @@ package dadgames.blackjack
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.activity.viewModels
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import dadgames.ui.DadTheme
 import dadgames.ui.GamePalette
-import dadgames.ui.P
-import dadgames.ui.menuBackground
 
 class MainActivity : ComponentActivity() {
+    private val vm: GameViewModel by viewModels()
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        debugIntent(intent)
+    }
+
+    /** Debuggable builds only: `--es stack 8,6,8,10` stacks the shoe so screenshots can show splits etc. */
+    private fun debugIntent(i: android.content.Intent?) {
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) return
+        val s = i?.getStringExtra("stack") ?: return
+        vm.debugStack(s.split(",").mapNotNull { it.trim().toIntOrNull() })
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        debugIntent(intent)
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         setContent {
             DadTheme(GamePalette.Felt) {
-                Box(Modifier.fillMaxSize().menuBackground().systemBarsPadding(), contentAlignment = Alignment.Center) {
-                    Text("Blackjack", style = MaterialTheme.typography.headlineLarge, color = P.text)
+                BackHandler(enabled = vm.screen != Screen.HOME) {
+                    when (vm.screen) {
+                        Screen.TABLE -> vm.leaveTable()
+                        Screen.TABLES -> if (vm.midHand) vm.openTable() else vm.screen = Screen.HOME
+                        else -> vm.screen = Screen.HOME
+                    }
+                }
+                Crossfade(vm.screen, animationSpec = tween(220), label = "screen") { s ->
+                    when (s) {
+                        Screen.HOME -> HomeScreen(vm)
+                        Screen.TABLE -> TableScreen(vm)
+                        Screen.TABLES -> TablesScreen(vm)
+                        Screen.SETTINGS -> SettingsScreen(vm)
+                        Screen.STATS -> StatsScreen(vm)
+                        Screen.HELP -> HelpScreen(vm)
+                    }
                 }
             }
         }
