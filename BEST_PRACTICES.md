@@ -78,6 +78,8 @@ Origin of each rule in brackets.
     different button. [Blackjack review]
 12z. Hold gestures need a hold well beyond the system long-press (≈800 ms) with visible progress, so slow
     deliberate taps don't trigger them. Pause game loops when the app is backgrounded. [Blackjack review]
+12aa. Cards in the middle of the table are **at least 66 dp wide** on his 360 dp screen; 50 dp was too
+    small. Make room by moving seats and tags, not by shrinking the cards. [Euchre, John]
 13a. When hints can undo progress, test with a bot that **follows the hints** across thousands of games
     and fails on any repeated position; when no real progress exists, say so. [Solitaire review]
 13b. Don't put a rule from research notes into the app or its help text ("same as your old app") until

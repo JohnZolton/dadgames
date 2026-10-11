@@ -218,7 +218,7 @@ private val prePlay = setOf(Phase.MISDEAL_CHECK, Phase.GO_UNDER, Phase.NAME_JOKE
 /** Unit direction from the table centre toward a seat. */
 private fun seatDir(g: GameState, seat: Int): Pair<Float, Float> =
     if (g.players == 4) listOf(0f to 1f, -1f to 0f, 0f to -1f, 1f to 0f)[seat]
-    else listOf(0f to 1f, -0.9f to -0.45f, 0.9f to -0.45f)[seat]
+    else listOf(0f to 1f, -0.95f to -0.3f, 0.95f to -0.3f)[seat]
 
 @Composable
 private fun Table(g: GameState, vm: GameViewModel) {
@@ -234,27 +234,29 @@ private fun Table(g: GameState, vm: GameViewModel) {
             // Side seats sit above the horizontal trick cards so nothing overlaps.
             val nudge = when {
                 g.players == 4 && seat == 2 -> Modifier
-                g.players == 4 -> Modifier.offset(y = (-64).dp)
-                else -> Modifier.offset(y = (-100).dp)
+                g.players == 4 -> Modifier.offset(y = (-70).dp)
+                else -> Modifier.offset(y = (-130).dp)
             }
-            Box(Modifier.align(align).then(nudge).padding(6.dp)) { Seat(g, vm, seat) }
+            Box(Modifier.align(align).then(nudge).padding(horizontal = 6.dp, vertical = if (align == Alignment.TopCenter) 0.dp else 6.dp)) { Seat(g, vm, seat) }
         }
-        Box(Modifier.align(Alignment.Center)) { Center(g, vm, tableW) }
+        Box(Modifier.align(Alignment.Center).offset(y = if (g.players == 4) 10.dp else (-16).dp)) { Center(g, vm, tableW) }
         Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp)) { SeatTag(g, vm, 0) }
     }
 }
 
 @Composable
 private fun Seat(g: GameState, vm: GameViewModel, seat: Int) {
+    // Partner's cards get a shorter box so the big trick cards have room below their tag.
+    val partner = g.players == 4 && seat == 2
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         val count = g.hands[seat].size
-        Box(Modifier.size(width = 104.dp, height = 56.dp).alpha(if (g.isOut(seat)) 0.35f else 1f), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(width = 104.dp, height = if (partner) 46.dp else 56.dp).alpha(if (g.isOut(seat)) 0.35f else 1f), contentAlignment = Alignment.Center) {
             for (i in 0 until count) {
                 val k = i - (count - 1) / 2f
                 CardBack(30.dp, Modifier.offset(x = (k * 11).dp, y = (abs(k) * 2).dp).rotate(k * 7f))
             }
         }
-        Spacer(Modifier.height(4.dp))
+        if (!partner) Spacer(Modifier.height(4.dp))
         SeatTag(g, vm, seat)
     }
 }
@@ -354,8 +356,8 @@ private fun TrickDots(n: Int) {
 
 @Composable
 private fun Center(g: GameState, vm: GameViewModel, tableWidth: Dp) {
-    // Leave room for the side seats: ~110dp each.
-    val cardW = min(66f, (tableWidth.value - 230f) / 2.5f).coerceAtLeast(50f).dp
+    // Side seats sit above the left/right trick cards, so the cards can use most of the width.
+    val cardW = min(86f, (tableWidth.value - 190f) / 2.5f).coerceAtLeast(66f).dp
     val reach = cardW.value * 0.95f
     val st0 = vm.shownTrick
     val turnSeat = if (st0 == null && g.phase != Phase.HAND_OVER && g.phase != Phase.GAME_OVER) g.turn else null
@@ -414,7 +416,8 @@ private fun TrickCard(g: GameState, vm: GameViewModel, p: Played, cardW: Dp, rea
     val t = arrive.value
     // Positions in px relative to the table centre.
     val restX = dx * reach * px
-    val restY = dy * reach * px
+    // Cards sit a little closer in vertically so they clear the seat tags above and below.
+    val restY = dy * reach * 0.76f * px
     val fromX = launch?.let { it.center.x - vm.tableCenter.x } ?: (dx * reach * far * px)
     val fromY = launch?.let { it.center.y - vm.tableCenter.y } ?: (dy * reach * far * px)
     var x = fromX + (restX - fromX) * t
