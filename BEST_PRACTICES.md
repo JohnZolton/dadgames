@@ -78,6 +78,13 @@ Origin of each rule in brackets.
     different button. [Blackjack review]
 12z. Hold gestures need a hold well beyond the system long-press (≈800 ms) with visible progress, so slow
     deliberate taps don't trigger them. Pause game loops when the app is backgrounded. [Blackjack review]
+13a. When hints can undo progress, test with a bot that **follows the hints** across thousands of games
+    and fails on any repeated position; when no real progress exists, say so. [Solitaire review]
+13b. Don't put a rule from research notes into the app or its help text ("same as your old app") until
+    a screenshot or the original's code confirms it. [Solitaire review: scoring]
+13c. **Any button that throws away a game in progress asks first** and says what it costs ("counts as
+    a loss"). Detect "stuck" automatically after every move; don't wait for him to press Hint.
+    [Solitaire review]
 
 ## Interaction and animation
 13. **Support both tap and drag/swipe** for moving pieces/cards. [Euchre]

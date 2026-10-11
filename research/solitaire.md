@@ -28,3 +28,16 @@ Daily deal calendar, monthly trophies at 10/20/31 solved. He has 0/31 — second
 
 ## Monetisation to strip
 Banner ads on every screen including a sweepstakes casino ad; "Remove Ads" toggle.
+
+## Exact scoring (decompiled from his APK v28.0.4; reproduces all 10 of his top scores)
+Recovered with Il2CppDumper + capstone (ScoreManager.CountScore / CalculateGameCompleteScore / OnDeckPass).
+- Waste → tableau **+45**; waste → foundation **+105**; tableau → foundation **+60**; foundation → tableau **−75**;
+  tableau → tableau, drawing, foundation → foundation: 0.
+- Card turned face up: **+25**.
+- Undo: reverses the move's points exactly, then **−25** more. Undoing a deck pass refunds the pass penalty
+  but still costs 25. (Undoing an automatic reveal probably takes back its +25 with no extra −25; medium confidence.)
+- Deck pass (waste recycled to stock): Draw 1 **−200 every pass**; Draw 3 first 3 passes free, then −200 each.
+- Score never goes below 0 (each deduction clamped). **No time penalty during play.**
+- Win: `bonus = (20 * score) / max(floor(seconds), 1)` (integer division), final = score + bonus. No cap.
+- Max base score = 24×105 + 28×60 + 21×25 = 4725. His usual 5195–5305 wins are 4725 − 200 (one recycle) plus bonus.
+Check: draw + waste→tableau = 45 at 0:22 (matches s09).
