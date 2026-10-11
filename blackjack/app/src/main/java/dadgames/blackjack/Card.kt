@@ -4,9 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,9 +33,15 @@ import dadgames.ui.suitColor
 private fun Dp.sp(): TextUnit = with(LocalDensity.current) { this@sp.toSp() }
 
 /**
- * The shared PlayingCard, with one change: the small bottom-right index is upright and carries
- * the suit. The shared card turns a bare rank upside down, so a 6 there reads as a 9 (and 10 as
- * "01") right next to the total bubble.
+ * Fan step (fraction of card width) that keeps a covered card's whole corner index visible:
+ * the index is rank over suit, and the widest rank ("10") plus margin is under half a card.
+ */
+const val INDEX_STEP = 0.5f
+
+/**
+ * Playing card for the table. Unlike the shared PlayingCard, the corner index is **rank above suit**
+ * (narrow, so a half-card fan shows it in full) and the small bottom-right index is upright with
+ * its suit (a rotated 6 reads as 9). [BEST_PRACTICES 12k]
  */
 @Composable
 fun BjCard(card: Card, width: Dp, modifier: Modifier = Modifier) {
@@ -48,23 +55,24 @@ fun BjCard(card: Card, width: Dp, modifier: Modifier = Modifier) {
             .background(P.cardFace)
             .border(0.75.dp, P.cardEdge, shape),
     ) {
-        Row(Modifier.align(Alignment.TopStart).padding(start = width * 0.06f, top = width * 0.02f), verticalAlignment = Alignment.CenterVertically) {
-            Text(card.rank.short, color = ink, fontSize = (width * 0.36f).sp(), fontWeight = FontWeight.Bold, style = centeredGlyph)
-            Text(card.suit.glyph, color = ink, fontSize = (width * 0.3f).sp(), style = centeredGlyph, modifier = Modifier.padding(start = width * 0.03f))
+        Column(
+            Modifier.align(Alignment.TopStart).padding(start = width * 0.05f, top = width * 0.05f).width(width * (INDEX_STEP - 0.06f)),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            val ten = card.rank == Rank.TEN
+            Text(
+                card.rank.short, color = ink, fontSize = (width * if (ten) 0.30f else 0.36f).sp(), fontWeight = FontWeight.Bold,
+                style = centeredGlyph, maxLines = 1, softWrap = false, letterSpacing = if (ten) (-1).sp else 0.sp,
+            )
+            Text(card.suit.glyph, color = ink, fontSize = (width * 0.30f).sp(), style = centeredGlyph, modifier = Modifier.padding(top = width * 0.04f))
         }
-        Box(Modifier.align(Alignment.Center).padding(top = width * 0.28f)) {
+        // Centre art sits right of and below the index.
+        Box(Modifier.align(Alignment.Center).padding(start = width * 0.42f, top = width * 0.42f)) {
             if (card.rank.isFace) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(card.rank.short, color = ink, fontSize = (width * 0.42f).sp(), fontFamily = Serif, fontWeight = FontWeight.Bold, style = centeredGlyph)
-                    Text(card.suit.glyph, color = ink, fontSize = (width * 0.24f).sp(), style = centeredGlyph)
-                }
+                Text(card.rank.short, color = ink, fontSize = (width * 0.46f).sp(), fontFamily = Serif, fontWeight = FontWeight.Bold, style = centeredGlyph)
             } else {
-                Text(card.suit.glyph, color = ink, fontSize = (width * if (card.rank == Rank.ACE) 0.62f else 0.5f).sp(), style = centeredGlyph)
+                Text(card.suit.glyph, color = ink, fontSize = (width * if (card.rank == Rank.ACE) 0.56f else 0.46f).sp(), style = centeredGlyph)
             }
-        }
-        Row(Modifier.align(Alignment.BottomEnd).padding(end = width * 0.06f, bottom = width * 0.04f), verticalAlignment = Alignment.CenterVertically) {
-            Text(card.rank.short, color = ink, fontSize = (width * 0.18f).sp(), fontWeight = FontWeight.Bold, style = centeredGlyph)
-            Text(card.suit.glyph, color = ink, fontSize = (width * 0.15f).sp(), style = centeredGlyph)
         }
     }
 }

@@ -70,17 +70,21 @@ fun isNatural(cards: List<Card>): Boolean = cards.size == 2 && totals(cards).bes
 /** A table in the carousel: same rules, different stakes and felt. */
 data class TableInfo(val name: String, val minBet: Long, val maxBet: Long, val felt: Long, val feltDark: Long)
 
-val TABLES: List<TableInfo> = listOf(
-    TableInfo("London", 5, 1_000_000, 0xFF237A4B, 0xFF0F3A22),
-    TableInfo("Paris", 1_000, 2_000_000, 0xFF1F5C8A, 0xFF0C2A44),
-    TableInfo("Monte Carlo", 10_000, 3_000_000, 0xFF8A2433, 0xFF3E0C14),
-    TableInfo("Macau", 25_000, 5_000_000, 0xFF5B2C83, 0xFF27103D),
-    TableInfo("Las Vegas", 50_000, 7_500_000, 0xFF137070, 0xFF063232),
-    TableInfo("Dubai", 100_000, 10_000_000, 0xFF3A3A3A, 0xFF121212),
-)
-
 /** Chip denominations: dad's familiar row plus bigger ones for his bankroll. */
 val CHIPS: List<Long> = listOf(500, 1_000, 2_500, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000)
+
+/** Every table's minimum is one of its chips, so the smallest chip on the rack is always a legal bet. */
+val TABLES: List<TableInfo> = listOf(
+    TableInfo("London", 500, 1_000_000, 0xFF237A4B, 0xFF0F3A22),
+    TableInfo("Paris", 1_000, 2_000_000, 0xFF1F5C8A, 0xFF0C2A44),
+    TableInfo("Monte Carlo", 10_000, 3_000_000, 0xFF8A2433, 0xFF3E0C14),
+    TableInfo("Macau", 50_000, 5_000_000, 0xFF5B2C83, 0xFF27103D),
+    TableInfo("Las Vegas", 100_000, 7_500_000, 0xFF137070, 0xFF063232),
+    TableInfo("Dubai", 500_000, 10_000_000, 0xFF3A3A3A, 0xFF121212),
+)
+
+/** Chips shown on a table's rack: from its minimum up to its maximum. */
+fun chipsFor(table: TableInfo): List<Long> = CHIPS.filter { it >= table.minBet && it <= table.maxBet }
 
 /** Largest bet allowed right now: table maximum, capped by what he has. */
 fun maxBetFor(table: TableInfo, balance: Long): Long = minOf(table.maxBet, balance)

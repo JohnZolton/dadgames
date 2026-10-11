@@ -8,6 +8,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dadgames.blackjack.core.Action
+import dadgames.blackjack.core.Bank
+import dadgames.blackjack.core.SaveRecovery
 import dadgames.blackjack.core.CHIPS
 import dadgames.blackjack.core.Game
 import dadgames.blackjack.core.Outcome
@@ -115,9 +117,19 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var stats by mutableStateOf(store.load("stats", Stats.serializer()) ?: Stats())
         private set
-    var profile by mutableStateOf(store.load("profile", Profile.serializer()) ?: Profile())
+    /** Chips and level under their own key: survive an unreadable game or profile save. [BEST_PRACTICES 20a] */
+    private val bank: Bank? = store.load("bank", Bank.serializer())
+    var profile by mutableStateOf(
+        store.load("profile", Profile.serializer())
+            ?: (bank?.let { it.level to it.xp } ?: SaveRecovery.levelFromProfile(store.unreadable("profile")))
+                ?.let { (lv, xp) -> Profile(level = lv, xp = xp) }
+            ?: Profile()
+    )
         private set
-    var game by mutableStateOf(store.load("game", Game.serializer()) ?: Game.new(settings.rules, SEED_BALANCE, rng.nextLong()))
+    var game by mutableStateOf(
+        store.load("game", Game.serializer())
+            ?: Game.new(settings.rules, SaveRecovery.startingBalance(bank, store.unreadable("game"), SEED_BALANCE), rng.nextLong())
+    )
         private set
 
     /** Cards with an id at or above this fly in from the shoe; older ones are already on the table. */
@@ -143,6 +155,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     var dealing by mutableStateOf(false)
         private set
 
+    private var lastBank: Bank? = null
     private var job: Job? = null
     private val skip = Channel<Unit>(Channel.CONFLATED)
     private var strategy: Strategy? = null
@@ -153,19 +166,27 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     /** Rules shown on the felt: the round's own while playing, the next hand's between hands. */
     val feltRules: Rules get() = if (game.phase == Phase.BETTING) settings.rules.normalized() else game.rules
 
-    /** Balance as shown: chips on the felt are already off it; winnings land when the chips do. */
+    /**
+     * Balance as shown. Between hands it's the real total (the bet is shown on the felt, taken on Deal);
+     * after a hand, winnings land when the chips reach the balance.
+     */
     val shownBalance: Long
         get() {
             val g = game
             return when (g.phase) {
-                Phase.BETTING -> g.balance - bet
+                Phase.BETTING -> g.balance
                 Phase.ROUND_OVER -> if (chipStage < 2) g.balance - (g.summary?.returned ?: 0) else g.balance
                 else -> g.balance
             }
         }
 
     val midHand: Boolean get() = game.phase != Phase.BETTING
-    val broke: Boolean get() = game.phase == Phase.BETTING && game.balance < CHIPS.first()
+    /** Can't cover this table's minimum. */
+    val shortForTable: Boolean get() = game.phase == Phase.BETTING && !busy && game.balance < table.minBet
+    /** Can't cover even the smallest table: free refill. */
+    val broke: Boolean get() = game.phase == Phase.BETTING && game.balance < TABLES.minOf { it.minBet }
+    /** Biggest table he can afford, to offer when he's short at this one. */
+    val affordableTable: Int? get() = TABLES.indices.lastOrNull { TABLES[it].minBet <= game.balance }
     val canAct: Boolean get() = !busy && (game.phase == Phase.PLAYER || game.phase == Phase.INSURANCE)
 
     /** Basic-strategy move for the current rules and hand. */
@@ -180,6 +201,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     init {
         // Back to the table if that's where he was (always when a hand was in progress).
         if (store.getBoolean("atTable", false) || game.phase != Phase.BETTING) openTable()
+        saveBank()
     }
 
     // ---------------------------------------------------------------- timings
@@ -206,7 +228,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     fun selectTable(i: Int) {
         if (midHand) return
         val t = TABLES[i]
-        val b = bet.coerceAtMost(maxBetFor(t, game.balance)).coerceAtLeast(minOf(t.minBet, game.balance))
+        val b = bet.coerceAtMost(maxBetFor(t, game.balance)).coerceAtLeast(t.minBet).coerceAtMost(maxOf(t.minBet, game.balance))
         saveProfile(profile.copy(table = i, bet = b))
         openTable()
     }
@@ -234,7 +256,28 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     fun refill() {
         if (!broke) return
         commit(game.copy().also { it.balance += REFILL })
-        saveProfile(profile.copy(refills = profile.refills + 1, bet = minOf(SEED_BET, REFILL)))
+        saveProfile(profile.copy(refills = profile.refills + 1, bet = minOf(SEED_BET, REFILL).coerceAtLeast(table.minBet)))
+    }
+
+    // ---------------------------------------------------------------- app in the background
+
+    /** App went to the background: stop the loop (no dealer play or auto-deal while he's away). [12z] */
+    fun pause() {
+        autoDeal = false
+        job?.cancel()
+        job = null
+    }
+
+    /** Back in front: settle the visual state and carry on from the saved game. */
+    fun resumeLoop() {
+        if (job?.isActive == true) return
+        sweeping = false
+        shuffling = false
+        dealing = false
+        chipStage = 0
+        busy = false
+        batchStart = game.nextId
+        if (screen == Screen.TABLE) job = viewModelScope.launch { flow() }
     }
 
     /** Hold Deal: deal now and keep dealing the same bet after every hand until he taps to stop. */
@@ -253,6 +296,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             bet < t.minBet -> { flash("Minimum bet at ${t.name} is ${t.minBet.short()}"); return false }
             bet > g0.balance -> { flash("Not enough chips for that bet"); return false }
             bet > t.maxBet -> { flash("Table limit is ${t.maxBet.short()}"); return false }
+            screen != Screen.TABLE -> return false
         }
         busy = true
         showHint = false
@@ -362,6 +406,14 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         if (g.phase == Phase.ROUND_OVER && g.rounds > stats.lastRound) record(g)
         game = g
         store.save(viewModelScope, "game", Game.serializer(), g)
+        saveBank()
+    }
+
+    private fun saveBank() {
+        val b = Bank(SaveRecovery.bankBalance(game), profile.level, profile.xp)
+        if (b == lastBank) return
+        lastBank = b
+        store.save(viewModelScope, "bank", Bank.serializer(), b)
     }
 
     private fun record(g: Game) {
@@ -378,12 +430,13 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         val result = when {
             g.hands.size > 1 -> "Split: " + g.hands.joinToString(", ") { it.outcome?.label ?: "" }
             s.insuranceWon && g.hands[0].outcome == Outcome.PUSH -> "Even money"
+            s.insuranceWon -> "Insured: dealer blackjack"
             else -> g.hands[0].outcome?.label ?: ""
         }
         val dealer = when {
             s.dealerBlackjack -> "Blackjack"
             s.dealerBust -> "Bust"
-            g.hands.all { it.totals.bust || it.surrendered } -> "-"
+            g.hands.all { it.totals.bust || it.surrendered } -> ""
             else -> "${s.dealerTotal}"
         }
         val rec = HandRecord(
@@ -429,6 +482,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     private fun saveProfile(p: Profile) {
         profile = p
         store.save(viewModelScope, "profile", Profile.serializer(), p)
+        saveBank()
     }
 
     private var flashJob: Job? = null
@@ -442,6 +496,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     fun debugStack(values: List<Int>) {
         if (game.phase != Phase.BETTING) return
         val g = game.copy()
+        g.rules = settings.rules.normalized()
         if (g.needsShuffle) g.reshuffle()
         val top = values.map { v ->
             val i = g.shoe.indexOfFirst { c -> c.points == v }

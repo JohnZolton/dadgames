@@ -74,6 +74,13 @@ import dadgames.blackjack.core.Outcome
 import dadgames.blackjack.core.Phase
 import dadgames.blackjack.core.Rules
 import dadgames.blackjack.core.TableInfo
+import dadgames.blackjack.core.TABLES
+import dadgames.blackjack.core.chipsFor
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import kotlinx.coroutines.withTimeoutOrNull
 import dadgames.ui.CardBack
 import dadgames.ui.P
 import dadgames.ui.ResultPanel
@@ -100,7 +107,7 @@ class Geo(val w: Float, val h: Float) {
     val dealerY = 102f
     val dealerH = dealerW * 1.42f
     val dealerBubbleY = dealerY + dealerH + 6f
-    val feltY = dealerBubbleY + 36f
+    val feltY = dealerBubbleY + 32f
     val playerW = min(118f, w * 0.29f)
     val playerH = playerW * 1.42f
     val actionsTop = h - 122f
@@ -126,12 +133,16 @@ class Geo(val w: Float, val h: Float) {
     val chipRack = 62f
     val rackRow1 = h - 158f
     val rackRow2 = h - 86f
-    val betButtonsY = rackRow1 - 142f
+    val betButtonsY = rackRow1 - 158f
 
-    fun rackChip(i: Int): Offset {
+    /** Chip [i] of [n] on the rack: five on the top row, the rest centred underneath. */
+    fun rackChip(i: Int, n: Int): Offset {
         val step = (w - 24f) / 5f
-        return if (i < 5) Offset(12f + step * (i + 0.5f), rackRow1 + chipRack / 2)
-        else Offset(12f + step * (i - 5 + 1f), rackRow2 + chipRack / 2)
+        val row = if (i < 5) 0 else 1
+        val inRow = if (row == 0) minOf(n, 5) else n - 5
+        val k = if (row == 0) i else i - 5
+        val x0 = (w - step * inRow) / 2f
+        return Offset(x0 + step * (k + 0.5f), (if (row == 0) rackRow1 else rackRow2) + chipRack / 2)
     }
 }
 
@@ -140,28 +151,33 @@ data class Spot(val x: Float, val y: Float, val w: Float, val faceUp: Boolean, v
 
 private data class HandBox(val x: Float, val cardW: Float, val width: Float, val y: Float)
 
+/**
+ * Card width for [cards] fanned at [INDEX_STEP] within [avail] dp: full size when it fits, otherwise
+ * smaller cards rather than a tighter fan, so every card's rank and suit stay visible. [review #3]
+ */
+private fun fanWidth(cards: Int, avail: Float, maxW: Float): Float =
+    min(maxW, avail / (1f + INDEX_STEP * (cards - 1).coerceAtLeast(0)))
+
 private fun handBoxes(g: Game, geo: Geo): List<HandBox> {
     val n = g.hands.size
     if (n <= 1) {
         val cards = g.hands.firstOrNull()?.cards?.size ?: 2
-        val cw = geo.playerW
-        var step = cw * 0.44f
+        // Left of the hand: the bet stack (to x = 82). Right: the screen edge.
         val minX = 86f
-        val avail = geo.w - minX - 10f
-        if (cw + step * (cards - 1) > avail) step = (avail - cw) / (cards - 1)
-        val total = cw + step * (cards - 1)
-        val x = maxOf(minX, (geo.w - total) / 2f).coerceAtMost(geo.w - 10f - total)
-        return listOf(HandBox(x, cw, total, geo.playerY))
+        val avail = geo.w - minX - 8f
+        val cw = fanWidth(cards, avail, geo.playerW)
+        val total = cw * (1f + INDEX_STEP * (cards - 1))
+        val x = maxOf(minX, (geo.w - total) / 2f).coerceAtMost(geo.w - 8f - total)
+        // Smaller cards keep their bottom edge where the full-size ones end.
+        return listOf(HandBox(x, cw, total, geo.playerY + (geo.playerH - cw * 1.42f)))
     }
     val slot = (geo.w - 8f) / n
-    val cw = min(geo.playerW, floatArrayOf(0f, 0f, 86f, 72f, 60f)[n])
+    val base = min(geo.playerW, floatArrayOf(0f, 0f, 86f, 72f, 60f)[n])
     return g.hands.mapIndexed { i, h ->
         val cards = h.cards.size
-        var step = cw * 0.44f
-        if (cw + step * (cards - 1) > slot - 8f) step = (slot - 8f - cw) / (cards - 1).coerceAtLeast(1)
-        val total = cw + step * (cards - 1)
+        val cw = fanWidth(cards, slot - 8f, base)
+        val total = cw * (1f + INDEX_STEP * (cards - 1))
         HandBox(4f + slot * i + (slot - total) / 2f, cw, total, geo.playerY + 6f)
-
     }
 }
 
@@ -172,10 +188,12 @@ fun layoutCards(g: Game, geo: Geo, sweeping: Boolean): Map<Int, Spot> {
     var z = 0f
     // Dealer
     val dn = g.dealer.size
-    val dStep = geo.dealerW * 0.46f
-    val dx0 = (geo.w - (geo.dealerW + dStep * (dn - 1))) / 2f
+    // Between the shoe gauge and the discard tray.
+    val dw = fanWidth(dn, geo.w - 2 * 66f, geo.dealerW)
+    val dStep = dw * INDEX_STEP
+    val dx0 = (geo.w - (dw + dStep * (dn - 1))) / 2f
     for ((i, c) in g.dealer.withIndex()) {
-        out[c.id] = Spot(dx0 + dStep * i, geo.dealerY, geo.dealerW, faceUp = !(i == 1 && g.holeHidden), z = z++)
+        out[c.id] = Spot(dx0 + dStep * i, geo.dealerY, dw, faceUp = !(i == 1 && g.holeHidden), z = z++)
     }
     // Player
     val boxes = handBoxes(g, geo)
@@ -235,17 +253,24 @@ private fun Table(vm: GameViewModel) {
             StatusLine(vm, g, geo)
             if (g.phase == Phase.BETTING && !vm.sweeping) BettingControls(vm, geo)
             if (vm.canAct || (vm.busy && !vm.dealing && (g.phase == Phase.PLAYER || g.phase == Phase.INSURANCE))) ActionBar(vm, g, geo)
-            HintBulb(vm, geo)
-            AutoDealPill(vm, geo)
+            SurrenderButton(vm, g, geo)
         }
-        AnimatedVisibility(vm.broke && !vm.busy, enter = fadeIn(tween(250)), exit = fadeOut(tween(150))) {
-            ResultPanel("Out of chips") {
+        AnimatedVisibility(vm.shortForTable, enter = fadeIn(tween(250)), exit = fadeOut(tween(150))) {
+            val to = vm.affordableTable
+            if (vm.broke || to == null) ResultPanel("Out of chips") {
                 Text(
                     "Here are ${REFILL.commas()} free chips to keep playing. No catch, no shop.",
                     color = P.textDim, fontSize = 17.sp, textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(20.dp))
                 PrimaryButton("Take ${REFILL.short()} chips", Modifier.fillMaxWidth()) { vm.refill() }
+            } else ResultPanel("Not enough for ${t.name}") {
+                Text(
+                    "The smallest bet here is ${t.minBet.short()}. You have ${vm.game.balance.short()}, enough for ${TABLES[to].name}.",
+                    color = P.textDim, fontSize = 17.sp, textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(20.dp))
+                PrimaryButton("Play at ${TABLES[to].name}", Modifier.fillMaxWidth()) { vm.selectTable(to) }
             }
         }
     }
@@ -263,15 +288,19 @@ private fun FeltPrint(vm: GameViewModel, geo: Geo, t: TableInfo) {
     val ink = Color.White.copy(alpha = 0.30f)
     val betting = vm.game.phase == Phase.BETTING && !vm.sweeping
     val y by animateFloatAsState(if (betting) geo.feltBettingY else geo.feltY, tween(450, easing = FastOutSlowInEasing), label = "felt")
+    // Between hands the print sits level with the shoe and tray, so keep it between them.
     Column(
-        Modifier.fillMaxWidth().at(0f, y),
+        Modifier.fillMaxWidth().at(0f, y).padding(horizontal = if (betting) 64.dp else 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(t.name.uppercase(), color = Color.Black.copy(alpha = 0.28f), fontFamily = Serif, fontWeight = FontWeight.Bold, fontSize = 30.sp, letterSpacing = 2.sp, maxLines = 1, lineHeight = 34.sp)
-        Text(r.dealerLine, color = ink, fontFamily = Serif, fontSize = 16.sp, maxLines = 1, lineHeight = 20.sp)
-        Text("BLACKJACK PAYS 3 TO 2", color = ink, fontFamily = Serif, fontWeight = FontWeight.Bold, fontSize = 18.sp, letterSpacing = 1.sp, maxLines = 1, lineHeight = 22.sp)
+        Text(t.name.uppercase(), color = Color.Black.copy(alpha = 0.28f), fontFamily = Serif, fontWeight = FontWeight.Bold, fontSize = if (betting) 30.sp else 26.sp, letterSpacing = 2.sp, maxLines = 1, softWrap = false, lineHeight = if (betting) 34.sp else 28.sp)
+        Text(r.dealerLine, color = ink, fontFamily = Serif, fontSize = 15.sp, maxLines = 1, softWrap = false, lineHeight = 19.sp)
+        Text(
+            "BLACKJACK PAYS 3 TO 2", color = ink, fontFamily = Serif, fontWeight = FontWeight.Bold,
+            fontSize = if (betting) 15.sp else 18.sp, letterSpacing = if (betting) 0.5.sp else 1.sp, maxLines = 1, softWrap = false, lineHeight = 22.sp,
+        )
         // The extra rules line only shows between hands, when there's room.
-        if (betting) Text(rulesLine(r), color = Color.White.copy(alpha = 0.22f), fontSize = 12.sp, maxLines = 1, lineHeight = 15.sp)
+        if (betting) Text(rulesLine(r), color = Color.White.copy(alpha = 0.22f), fontSize = 12.sp, maxLines = 2, lineHeight = 15.sp, textAlign = TextAlign.Center)
     }
 }
 
@@ -408,9 +437,36 @@ private fun Bubbles(vm: GameViewModel, g: Game, geo: Geo) {
             else -> t.label
         }
         val shown = lagged(label, landing(h.cards), fresh = h.cards.any { it.id >= vm.batchStart })
-        if (shown != null) Box(Modifier.zIndex(250f).at(b.x, b.y - 36f).width(b.width.dp), contentAlignment = Alignment.TopCenter) {
-            Bubble(shown, highlight = active && g.hands.size > 1)
+        // The hand he's playing: gold glowing total with a bobbing gold arrow. [BEST_PRACTICES #9]
+        val yourMove = active && vm.canAct
+        if (shown != null) Box(Modifier.zIndex(250f).at(b.x - 30f, b.y - 36f).width((b.width + 60f).dp), contentAlignment = Alignment.TopCenter) {
+            // Arrow on the left of the total, or on the right (pointing back) when the hand is at the left edge.
+            val bubbleHalf = 14f + shown.length * 6.5f
+            val arrowLeft = b.x + b.width / 2f - bubbleHalf - 24f >= 2f
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (yourMove) { if (arrowLeft) TurnArrow() else Spacer(Modifier.width(22.dp)) }
+                Bubble(shown, highlight = yourMove)
+                if (yourMove) { if (arrowLeft) Spacer(Modifier.width(22.dp)) else TurnArrow(pointLeft = true) }
+            }
         }
+    }
+}
+
+/** Small gold arrow pointing right at the active hand's total, bobbing toward it. */
+@Composable
+private fun TurnArrow(pointLeft: Boolean = false) {
+    val bob by rememberInfiniteTransition(label = "arrow").animateFloat(
+        0f, 1f, infiniteRepeatable(tween(550, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "arrow",
+    )
+    val gold = P.accent
+    Canvas(Modifier.size(22.dp).graphicsLayer { translationX = (bob * 4f - 4f) * density * (if (pointLeft) -1 else 1); if (pointLeft) rotationZ = 180f }) {
+        val w = size.width
+        val h = size.height
+        val p = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.95f, h / 2); lineTo(w * 0.15f, h * 0.1f); lineTo(w * 0.35f, h / 2); lineTo(w * 0.15f, h * 0.9f); close()
+        }
+        drawPath(p, Color(0x66000000), style = Stroke(w * 0.14f))
+        drawPath(p, gold)
     }
 }
 
@@ -455,8 +511,9 @@ private fun BetChips(vm: GameViewModel, g: Game, geo: Geo) {
         // One hand: a big stack left of the cards, like his app. Split hands: a small stack under each hand.
         val size = if (single) 64f else 30f
         val cardsBottom = splitBottom
-        val home = if (single) Offset(44f, geo.playerY + 80f) else Offset(b.x + 16f, cardsBottom + 10f + size / 2)
-        val origin = if (i == 0) geo.betCentre else Offset(boxes[0].x + 16f, home.y)
+        // Split stacks: chip + amount centred under their hand. (x is the chip-and-label centre.)
+        val home = if (single) Offset(44f, geo.playerY + 80f) else Offset(b.x + b.width / 2f, cardsBottom + 10f + size / 2)
+        val origin = if (i == 0) geo.betCentre else Offset(boxes[0].x + boxes[0].width / 2f, home.y)
         val kept = minOf(h.payout, h.bet)
         val won = (h.payout - h.bet).coerceAtLeast(0)
         val lostPart = h.bet - kept
@@ -515,12 +572,15 @@ private fun MovingStack(slot: Int, amount: Long, target: ChipTarget, size: Float
         ) {
             ChipStack(amount, size.dp)
             if (labelBelow) label()
-        } else Row(
-            Modifier.zIndex(300f).at(x.value - size / 2f, top).alpha(a.value),
-            verticalAlignment = Alignment.Bottom,
+        } else Box(
+            // Centred on x, so the 4th split hand's amount stays clear of the screen edge.
+            Modifier.zIndex(300f).at(x.value - 60f, top).width(120.dp).alpha(a.value),
+            contentAlignment = Alignment.BottomCenter,
         ) {
-            ChipStack(amount, size.dp)
-            if (labelBelow) Box(Modifier.padding(start = 4.dp, bottom = 4.dp)) { label() }
+            Row(verticalAlignment = Alignment.Bottom) {
+                ChipStack(amount, size.dp)
+                if (labelBelow) Box(Modifier.padding(start = 4.dp, bottom = 4.dp)) { label() }
+            }
         }
     }
 }
@@ -544,10 +604,12 @@ private fun Results(vm: GameViewModel, g: Game, geo: Geo) {
         val o = h.outcome ?: continue
         val b = boxes[i]
         val small = g.hands.size > 2
+        // Insured against a dealer blackjack: the hand loses but insurance pays it back.
+        val insured = o == Outcome.LOSE && g.summary?.insuranceWon == true
         val text = when (o) {
-            Outcome.PUSH -> "Push"
+            Outcome.PUSH -> if (g.summary?.insuranceWon == true) "Even money" else "Push"
             Outcome.BUST -> "Bust"
-            Outcome.LOSE -> "Lose"
+            Outcome.LOSE -> if (insured) (if (g.summary?.net == 0L) "Even" else "Insured") else "Lose"
             Outcome.SURRENDER -> "Half back"
             Outcome.WIN -> if (small) h.net.signed() else "Win ${h.net.signed()}"
             Outcome.BLACKJACK -> "Blackjack! ${h.net.signed()}"
@@ -561,7 +623,7 @@ private fun Results(vm: GameViewModel, g: Game, geo: Geo) {
                 text,
                 Modifier.graphicsLayer { scaleX = appear.value; scaleY = appear.value }
                     .shadow(8.dp, RoundedCornerShape(50)).clip(RoundedCornerShape(50))
-                    .background(outcomeColor(o)).padding(horizontal = if (small) 10.dp else 18.dp, vertical = 6.dp),
+                    .background(if (insured) outcomeColor(Outcome.PUSH) else outcomeColor(o)).padding(horizontal = if (small) 10.dp else 18.dp, vertical = 6.dp),
                 color = Color(0xFF1C1C1C), fontSize = if (small) 17.sp else 24.sp, fontWeight = FontWeight.ExtraBold,
                 maxLines = 1, softWrap = false,
             )
@@ -657,13 +719,17 @@ private fun StatusLine(vm: GameViewModel, g: Game, geo: Geo) {
         else -> null
     }
     val pulse by rememberInfiniteTransition(label = "s").animateFloat(0f, 1f, infiniteRepeatable(tween(650), RepeatMode.Reverse), label = "s")
-    Box(Modifier.fillMaxWidth().at(0f, 60f).height(40.dp), contentAlignment = Alignment.Center) {
-        if (text != null) Text(
-            text,
-            Modifier.graphicsLayer { if (yours) { scaleX = 1f + 0.03f * pulse; scaleY = scaleX } },
-            color = if (yours) gold else Color.White, fontSize = if (yours) 22.sp else 19.sp,
-            fontWeight = if (yours) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, softWrap = false,
-        )
+    Box(Modifier.zIndex(650f).fillMaxWidth().at(0f, 60f).height(42.dp), contentAlignment = Alignment.Center) {
+        when {
+            // Auto-deal takes the status line: one obvious place to look, and tap it to stop.
+            vm.autoDeal && !vm.shuffling -> AutoDealSign(vm)
+            text != null -> Text(
+                text,
+                Modifier.graphicsLayer { if (yours) { scaleX = 1f + 0.03f * pulse; scaleY = scaleX } },
+                color = if (yours) gold else Color.White, fontSize = if (yours) 22.sp else 19.sp,
+                fontWeight = if (yours) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, softWrap = false,
+            )
+        }
     }
 }
 
@@ -677,103 +743,136 @@ fun hintWords(a: Action): String = when (a) {
     Action.NO_INSURANCE -> "No insurance"
 }
 
-private fun roundWords(g: Game): String {
+/** One line for the whole round. Split rounds give the net result (each hand has its own label). */
+fun roundWords(g: Game): String {
     val s = g.summary ?: return ""
     return when {
         s.insuranceWon && s.net == 0L -> "Insurance paid. You break even"
+        s.insuranceWon && s.net > 0 -> "Even money: you win ${s.net.short()}"
         g.hands.all { it.surrendered } -> "Surrendered. Half your bet back"
+        g.hands.size > 1 -> when {
+            s.net > 0 -> "Split hands: you win ${s.net.short()}"
+            s.net < 0 -> "Split hands: you lose ${(-s.net).short()}"
+            else -> "Split hands: you break even"
+        }
         s.net > 0 -> "You win ${s.net.short()}"
-        s.net < 0 -> if (s.dealerBlackjack) "Dealer has blackjack" else "Dealer wins"
+        s.net < 0 -> when {
+            s.dealerBlackjack -> "Dealer has blackjack"
+            g.hands[0].totals.bust -> "Bust. Dealer wins"
+            else -> "Dealer wins"
+        }
         else -> "Push. Bet returned"
     }
 }
 
 // ---------------------------------------------------------------- actions
 
-private data class Btn(val action: Action, val label: String, val icon: Icon, val color: Color)
+private data class Btn(val action: Action?, val label: String, val icon: Icon, val color: Color)
 
-private fun buttonFor(a: Action): Btn = when (a) {
-    Action.STAND -> Btn(a, "Stand", Icon.STAND, Color(0xFFE8483B))
-    Action.SPLIT -> Btn(a, "Split", Icon.SPLIT, Color(0xFFC04FD8))
-    Action.DOUBLE -> Btn(a, "Double", Icon.DOUBLE, Color(0xFF3D8BEB))
-    Action.HIT -> Btn(a, "Hit", Icon.HIT, Color(0xFF2FBF5B))
-    Action.SURRENDER -> Btn(a, "Give up", Icon.SURRENDER, Color(0xFF8A8F98))
-    Action.INSURANCE -> Btn(a, "Insurance", Icon.INSURANCE, Color(0xFFD9A93A))
-    Action.NO_INSURANCE -> Btn(a, "No", Icon.NO, Color(0xFF8A8F98))
-}
+private val STAND_BTN = Btn(Action.STAND, "Stand", Icon.STAND, Color(0xFFE8483B))
+private val SPLIT_BTN = Btn(Action.SPLIT, "Split", Icon.SPLIT, Color(0xFFC04FD8))
+private val DOUBLE_BTN = Btn(Action.DOUBLE, "Double", Icon.DOUBLE, Color(0xFF3D8BEB))
+private val HIT_BTN = Btn(Action.HIT, "Hit", Icon.HIT, Color(0xFF2FBF5B))
+private val NO_BTN = Btn(Action.NO_INSURANCE, "No", Icon.NO, Color(0xFF8A8F98))
+private val INS_BTN = Btn(Action.INSURANCE, "Insure", Icon.INSURANCE, Color(0xFFD9A93A))
 
+/**
+ * Fixed slots, same place every hand: Stand, Split, Double, Hit, then the hint bulb. Moves that
+ * aren't allowed right now are greyed out, never removed, so a repeated tap can't land on a
+ * different button. Insurance uses the outer slots (No where Stand is, Insure where Hit is).
+ * [BEST_PRACTICES 12y]
+ */
 @Composable
 private fun ActionBar(vm: GameViewModel, g: Game, geo: Geo) {
     val legal = g.legal()
-    // Same order as his app: Stand, Split, Double, Hit (surrender first when it's on).
-    val order = listOf(Action.SURRENDER, Action.STAND, Action.SPLIT, Action.DOUBLE, Action.HIT, Action.NO_INSURANCE, Action.INSURANCE)
-    val buttons = order.filter { it in legal }.map(::buttonFor)
+    val slots: List<Btn?> = if (g.phase == Phase.INSURANCE) listOf(NO_BTN, null, null, INS_BTN)
+    else listOf(STAND_BTN, SPLIT_BTN, DOUBLE_BTN, HIT_BTN)
     val hinted = if (vm.showHint || vm.settings.autoHint) vm.hintAction else null
     Row(
-        Modifier.fillMaxWidth().at(0f, geo.actionsTop).height(118.dp).padding(horizontal = 6.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        Modifier.zIndex(600f).fillMaxWidth().at(0f, geo.actionsTop).height(118.dp).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        for (b in buttons) RoundAction(b, Modifier.weight(1f), enabled = vm.canAct, hinted = b.action == hinted) { vm.act(b.action) }
-        // With split hands the bulb's usual spot is taken by cards, so it joins the row.
-
-        if (vm.settings.hintButton && g.hands.size >= 2) {
-            RoundAction(Btn(Action.STAND, "Hint", Icon.BULB, if (vm.showHint) P.accent else Color(0xFF5E6B63)), Modifier.weight(1f), enabled = vm.canAct, hinted = false) { vm.toggleHint() }
+        for (b in slots) {
+            if (b == null) Spacer(Modifier.weight(1f))
+            else RoundAction(b, Modifier.weight(1f), enabled = vm.canAct && b.action in legal, hinted = b.action == hinted) { b.action?.let(vm::act) }
+        }
+        if (vm.settings.hintButton) {
+            val on = vm.showHint
+            RoundAction(
+                Btn(null, "Hint", Icon.BULB, if (on) P.accent else Color(0xFFF4F1E8)), Modifier.weight(1f),
+                enabled = vm.canAct, hinted = false, iconColor = Color(0xFF1C2A22),
+            ) { vm.toggleHint() }
         }
     }
 }
 
 @Composable
-private fun RoundAction(b: Btn, modifier: Modifier, enabled: Boolean, hinted: Boolean, onClick: () -> Unit) {
+private fun RoundAction(b: Btn, modifier: Modifier, enabled: Boolean, hinted: Boolean, iconColor: Color = Color.White, onClick: () -> Unit) {
     val pulse by rememberInfiniteTransition(label = "h").animateFloat(0f, 1f, infiniteRepeatable(tween(600), RepeatMode.Reverse), label = "h")
     val gold = P.accent
-    Column(modifier.wrapContentSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+    val grey = Color(0xFF55615A)
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            Modifier.size(78.dp).graphicsLayer { if (hinted) { scaleX = 1.04f + 0.06f * pulse; scaleY = scaleX } },
+            Modifier.size(68.dp).graphicsLayer { if (hinted) { scaleX = 1.04f + 0.06f * pulse; scaleY = scaleX } },
             contentAlignment = Alignment.Center,
         ) {
-            if (hinted) Box(Modifier.size(78.dp).clip(CircleShape).background(gold.copy(alpha = 0.55f + 0.45f * pulse)))
+            if (hinted) Box(Modifier.size(68.dp).clip(CircleShape).background(gold.copy(alpha = 0.55f + 0.45f * pulse)))
             Box(
-                Modifier.size(66.dp).shadow(6.dp, CircleShape).clip(CircleShape).background(b.color.copy(alpha = if (enabled) 1f else 0.6f))
+                Modifier.size(56.dp).shadow(if (enabled) 6.dp else 0.dp, CircleShape).clip(CircleShape)
+                    .background(if (enabled) b.color else grey.copy(alpha = 0.55f))
                     .clickable(enabled = enabled, onClick = onClick),
                 contentAlignment = Alignment.Center,
-            ) { IconGlyph(b.icon, Modifier.size(38.dp), bg = b.color) }
+            ) {
+                IconGlyph(
+                    b.icon, Modifier.size(32.dp), if (enabled) iconColor else Color.White.copy(alpha = 0.35f),
+                    bg = if (enabled) b.color else Color.Transparent,
+                )
+            }
         }
         Text(
-            b.label, color = if (hinted) gold else Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold,
-            maxLines = 1, softWrap = false,
+            b.label, color = when { hinted -> gold; enabled -> Color.White; else -> Color.White.copy(alpha = 0.4f) },
+            fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false,
         )
     }
 }
 
+/**
+ * Surrender (only when the rule is on and it's allowed: first two cards, one hand). It sits in
+ * the strip above the buttons, left side, so the button row never grows to six.
+ */
 @Composable
-private fun HintBulb(vm: GameViewModel, geo: Geo) {
-    val g = vm.game
-    if (!vm.settings.hintButton || vm.dealing || !(g.phase == Phase.PLAYER || g.phase == Phase.INSURANCE) || g.hands.size >= 2) return
-    val on = vm.showHint
-    val gold = P.accent
-    Box(
-        Modifier.at(geo.w - 74f, geo.actionsTop - 76f).size(60.dp).shadow(6.dp, CircleShape).clip(CircleShape)
-            .background(if (on) gold else Color.White).clickable(enabled = vm.canAct) { vm.toggleHint() },
-        contentAlignment = Alignment.Center,
-    ) { IconGlyph(Icon.BULB, Modifier.size(40.dp), Color(0xFF1C2A22)) }
+private fun SurrenderButton(vm: GameViewModel, g: Game, geo: Geo) {
+    if (!g.rules.lateSurrender || g.phase != Phase.PLAYER || g.hands.size != 1 || g.hands[0].cards.size != 2) return
+    val enabled = vm.canAct && Action.SURRENDER in g.legal()
+    val hinted = enabled && (vm.showHint || vm.settings.autoHint) && vm.hintAction == Action.SURRENDER
+    val pulse by rememberInfiniteTransition(label = "sr").animateFloat(0f, 1f, infiniteRepeatable(tween(600), RepeatMode.Reverse), label = "sr")
+    Row(
+        Modifier.zIndex(600f).at(10f, geo.pillTop + 4f)
+            .clip(RoundedCornerShape(50))
+            .background(Color(0xE6101A14))
+            .border(2.dp, if (hinted) P.accent.copy(alpha = 0.5f + 0.5f * pulse) else Color.White.copy(alpha = 0.25f), RoundedCornerShape(50))
+            .clickable(enabled = enabled) { vm.act(Action.SURRENDER) }
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconGlyph(Icon.SURRENDER, Modifier.size(22.dp), if (hinted) P.accent else Color.White)
+        Spacer(Modifier.width(8.dp))
+        Text("Give up half", color = if (hinted) P.accent else Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+    }
 }
 
+/** Gold, pulsing sign in the status line while auto-deal is on; tap it to stop. */
 @Composable
-private fun AutoDealPill(vm: GameViewModel, geo: Geo) {
-    if (!vm.autoDeal) return
+private fun AutoDealSign(vm: GameViewModel) {
     val pulse by rememberInfiniteTransition(label = "a").animateFloat(0f, 1f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "a")
-    // Between the cards and the buttons, clear of the hint bulb on the right.
-    Box(Modifier.at(0f, geo.pillTop).width((geo.w - 76f).dp).zIndex(500f), contentAlignment = Alignment.Center) {
-        Row(
-            Modifier.clip(RoundedCornerShape(50)).background(Color(0xE6101A14))
-                .border(2.dp, P.accent.copy(alpha = 0.5f + 0.5f * pulse), RoundedCornerShape(50))
-                .clickable { vm.stopAutoDeal() }.padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Auto deal", color = P.accent, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-            Text(" · Tap to stop", color = Color.White, fontSize = 16.sp, maxLines = 1, softWrap = false)
-        }
+    Row(
+        Modifier.clip(RoundedCornerShape(50)).background(Color(0xE6101A14))
+            .border(2.dp, P.accent.copy(alpha = 0.5f + 0.5f * pulse), RoundedCornerShape(50))
+            .clickable { vm.stopAutoDeal() }.padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Auto deal", color = P.accent, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+        Text(" · Tap to stop", color = Color.White, fontSize = 17.sp, maxLines = 1, softWrap = false)
     }
 }
 
@@ -781,10 +880,14 @@ private fun AutoDealPill(vm: GameViewModel, geo: Geo) {
 
 private data class Fly(val n: Int, val value: Long, val from: Offset)
 
+/** How long Deal must be held to start auto-deal: well past a slow tap or the system long-press. [12z] */
+const val AUTO_DEAL_HOLD_MS = 800
+
 @Composable
 private fun BettingControls(vm: GameViewModel, geo: Geo) {
     val flying = remember { mutableStateListOf<Fly>() }
     var counter by remember { mutableStateOf(0) }
+    val scope = rememberCoroutineScope()
     // Clear and Deal flank the bet like in his app.
     val by = geo.betButtonsY
     Column(Modifier.at(geo.w * 0.2f - 50f, by).width(100.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -798,31 +901,55 @@ private fun BettingControls(vm: GameViewModel, geo: Geo) {
     Column(Modifier.at(geo.w * 0.8f - 70f, by).width(140.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         val pulse by rememberInfiniteTransition(label = "d").animateFloat(0f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "d")
         val ready = vm.bet > 0
-        Box(
-            Modifier.size(72.dp).graphicsLayer { if (ready) { scaleX = 1f + 0.04f * pulse; scaleY = scaleX } }
-                .shadow(8.dp, CircleShape).clip(CircleShape).background(Color(0xFF2FBF5B).copy(alpha = if (ready) 1f else 0.45f))
-                .border(3.dp, Color.White.copy(alpha = 0.85f), CircleShape)
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = { vm.deal() },
-                        onLongPress = { vm.startAutoDeal() },
+        val hold = remember { Animatable(0f) }
+        val gold = P.accent
+        Box(Modifier.size(84.dp), contentAlignment = Alignment.Center) {
+            // Ring fills while Deal is held; full ring = auto-deal.
+            Canvas(Modifier.size(84.dp)) {
+                if (hold.value > 0f) {
+                    val st = 5.dp.toPx()
+                    drawArc(
+                        gold, -90f, 360f * hold.value, false, Offset(st / 2, st / 2),
+                        androidx.compose.ui.geometry.Size(size.width - st, size.height - st), style = Stroke(st, cap = StrokeCap.Round),
                     )
-                },
-            contentAlignment = Alignment.Center,
-        ) { IconGlyph(Icon.DEAL, Modifier.size(40.dp), bg = Color(0xFF2FBF5B)) }
+                }
+            }
+            Box(
+                Modifier.size(72.dp).graphicsLayer { if (ready && hold.value == 0f) { scaleX = 1f + 0.04f * pulse; scaleY = scaleX } }
+                    .shadow(8.dp, CircleShape).clip(CircleShape).background(Color(0xFF2FBF5B).copy(alpha = if (ready) 1f else 0.45f))
+                    .border(3.dp, Color.White.copy(alpha = 0.85f), CircleShape)
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown()
+                            val fill = scope.launch { hold.animateTo(1f, tween(AUTO_DEAL_HOLD_MS, easing = androidx.compose.animation.core.LinearEasing)) }
+                            val up = withTimeoutOrNull(AUTO_DEAL_HOLD_MS.toLong()) { waitForUpOrCancellation() }
+                            fill.cancel()
+                            if (up != null) {
+                                vm.deal() // released early: a plain deal
+                            } else {
+                                vm.startAutoDeal() // held the full time
+                                waitForUpOrCancellation()
+                            }
+                            scope.launch { hold.snapTo(0f) }
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) { IconGlyph(Icon.DEAL, Modifier.size(40.dp), bg = Color(0xFF2FBF5B)) }
+        }
         Text("Deal", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Text("(Hold to auto)", color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp, maxLines = 1, softWrap = false)
     }
-    // Chip rack: his five chips on top, the big ones underneath.
+    // Chip rack: only chips this table takes (its minimum up to its maximum), in his familiar order.
+    val t = vm.table
+    val chips = chipsFor(t)
+    val rows = if (chips.size > 5) 2 else 1
     Box(
-        Modifier.at(6f, geo.rackRow1 - 8f).size((geo.w - 12f).dp, (geo.rackRow2 - geo.rackRow1 + geo.chipRack + 16f).dp)
+        Modifier.at(6f, geo.rackRow1 - 8f).size((geo.w - 12f).dp, ((geo.rackRow2 - geo.rackRow1) * (rows - 1) + geo.chipRack + 16f).dp)
             .clip(RoundedCornerShape(22.dp)).background(Color(0x55000000)),
     )
-    val t = vm.table
-    for ((i, v) in CHIPS.withIndex()) {
-        if (v > t.maxBet) continue
-        val c = geo.rackChip(i)
-        val canAdd = vm.bet < minOf(t.maxBet, vm.game.balance)
+    for ((i, v) in chips.withIndex()) {
+        val c = geo.rackChip(i, chips.size)
+        val canAdd = vm.bet < minOf(t.maxBet, vm.game.balance) && v <= vm.game.balance
         Box(
             Modifier.at(c.x - geo.chipRack / 2, c.y - geo.chipRack / 2).size(geo.chipRack.dp).clip(CircleShape)
                 .clickable {

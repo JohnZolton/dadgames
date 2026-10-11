@@ -81,7 +81,7 @@ fun Chip(value: Long, size: Dp, modifier: Modifier = Modifier, dim: Boolean = fa
             drawCircle(look.base.copy(alpha = 0.55f * alpha), r * 0.62f, c, style = Stroke(r * 0.05f))
             drawArc(Color.White.copy(alpha = 0.18f * alpha), 200f, 120f, false, Offset(c.x - r * 0.9f, c.y - r * 0.9f), Size(r * 1.8f, r * 1.8f), style = Stroke(r * 0.06f))
         }
-        val fs = with(LocalDensity.current) { (size * if (label.length <= 2) 0.36f else if (label.length == 3) 0.3f else 0.25f).toSp() }
+        val fs = with(LocalDensity.current) { (size * if (label.length <= 2) 0.34f else if (label.length == 3) 0.26f else 0.20f).toSp() }
         Text(label, color = look.ink.copy(alpha = alpha), fontSize = fs, fontWeight = FontWeight.ExtraBold, style = centeredGlyph, maxLines = 1, softWrap = false)
     }
 }

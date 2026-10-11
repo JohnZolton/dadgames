@@ -4,7 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -307,18 +307,26 @@ private fun Headline(s: Stats) {
 private fun RecentRow(h: HandRecord) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(h.result, color = P.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Text("You ${h.player} · Dealer ${h.dealer} · bet ${h.staked.short()}", color = P.textDim, fontSize = 14.sp, maxLines = 2)
+            Text(h.result, color = P.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+            // An all-bust or surrendered hand never makes the dealer play: say nothing about the dealer then.
+            Text(
+                "You ${h.player}" + if (h.dealer.isBlank() || h.dealer == "-") "" else " · Dealer ${h.dealer}",
+                color = P.textDim, fontSize = 14.sp, maxLines = 2,
+            )
         }
-        Text(
-            if (h.net == 0L) "0" else h.net.signed(),
-            color = when {
-                h.net > 0 -> Color(0xFF7BE08F)
-                h.net < 0 -> Color(0xFFFF9A8F)
-                else -> P.textDim
-            },
-            fontSize = 18.sp, fontWeight = FontWeight.Bold,
-        )
+        Spacer(Modifier.width(8.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                if (h.net == 0L) "0" else h.net.signed(),
+                color = when {
+                    h.net > 0 -> Color(0xFF7BE08F)
+                    h.net < 0 -> Color(0xFFFF9A8F)
+                    else -> P.textDim
+                },
+                fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+            )
+            Text("bet ${h.staked.short()}", color = P.textDim, fontSize = 14.sp, maxLines = 1, softWrap = false)
+        }
     }
 }
 
@@ -348,7 +356,8 @@ private fun BalanceChart(points: List<Long>) {
                 Modifier.weight(1f).height(150.dp)
                     .pointerInput(points) {
                         fun idx(x: Float) = ((x / size.width) * (points.size - 1)).toInt().coerceIn(0, points.size - 1)
-                        detectDragGestures(onDragEnd = { pick = null }, onDragCancel = { pick = null }) { ch, _ -> pick = idx(ch.position.x) }
+                        // Horizontal drags only: a vertical swipe on the chart still scrolls the page. [12x]
+                        detectHorizontalDragGestures(onDragEnd = { pick = null }, onDragCancel = { pick = null }) { ch, _ -> pick = idx(ch.position.x) }
                     }
                     .pointerInput(points) {
                         detectTapGestures { pick = ((it.x / size.width) * (points.size - 1)).toInt().coerceIn(0, points.size - 1) }

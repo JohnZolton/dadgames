@@ -15,6 +15,18 @@ import dadgames.ui.GamePalette
 class MainActivity : ComponentActivity() {
     private val vm: GameViewModel by viewModels()
 
+    override fun onStart() {
+        super.onStart()
+        vm.resumeLoop()
+    }
+
+    /** Backgrounded: pause dealer play and auto-deal until he's back. [BEST_PRACTICES 12z] */
+    override fun onStop() {
+        vm.pause()
+        super.onStop()
+    }
+
+    /** singleTop (manifest): debug hooks also reach a running app. */
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         debugIntent(intent)
