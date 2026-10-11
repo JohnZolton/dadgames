@@ -289,7 +289,7 @@ fun DailyScreen(vm: GameViewModel) {
     val days = month.lengthOfMonth()
     val solved = vm.daily.solvedIn(month.year, month.monthValue)
 
-    ScreenScaffold("Daily challenges", vm::back) {
+    ScreenScaffold("Challenges", vm::back) {
         // Trophies for 10, 20 and every day of the month.
         Spacer(Modifier.height(8.dp))
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(P.wash).padding(16.dp)) {
