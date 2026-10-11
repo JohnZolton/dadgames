@@ -28,6 +28,16 @@ Origin of each rule in brackets.
    re-check every other element on the 411 dp screen. [Euchre trick cards covered seat tags]
 11. Edge-to-edge with `systemBarsPadding()`; keep tappable controls clear of the 3-button nav bar.
 12. Prompts say exactly what to do ("Your turn. Tap or swipe up a card."). Hint button on every game.
+12a. **Size digits and glyphs inside fixed cells in dp derived from the cell size, not sp**, so a large
+    system font setting can't overflow the board. [Sudoku]
+12b. Put extra detail on a **second line** of a big button (e.g. "Continue / Medium · 4:12") rather than
+    appending it to the label. [Sudoku: single-line pill clipped]
+12c. Generated help text (hints, explanations) gets a **test-enforced length limit** that fits its
+    area on the 411 dp screen. [Sudoku]
+12d. Decorative art must obey the game's own rules (no repeated digit in a Sudoku box, no impossible
+    card layout); regular players notice instantly. [Sudoku]
+12e. Launcher icon foreground stays inside the central 66 dp safe circle; check it in the app drawer
+    with the round mask, not just the vector preview. [Sudoku]
 
 ## Interaction and animation
 13. **Support both tap and drag/swipe** for moving pieces/cards. [Euchre]
