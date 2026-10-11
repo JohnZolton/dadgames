@@ -71,6 +71,13 @@ Origin of each rule in brackets.
 12u. **Script a whole game end to end** on the emulator (from a solver/bot), checking a visible counter
     after each step. It finds bugs screenshots miss. [Solitaire, Blocks]
 12v. Read the emulator's real density (`wm density`); never assume a px-per-dp ratio. [Solitaire]
+12w. Floating controls (hint bulb, signs) need an explicit `zIndex` above table items; check them
+    against the **longest realistic** hand/stack. [Blackjack review]
+12x. Charts or canvases inside scrolling screens must not consume vertical drags. [Blackjack review]
+12y. **Action rows keep fixed slots** (grey out unavailable actions) so repeated taps never land on a
+    different button. [Blackjack review]
+12z. Hold gestures need a hold well beyond the system long-press (≈800 ms) with visible progress, so slow
+    deliberate taps don't trigger them. Pause game loops when the app is backgrounded. [Blackjack review]
 
 ## Interaction and animation
 13. **Support both tap and drag/swipe** for moving pieces/cards. [Euchre]
@@ -92,6 +99,9 @@ Origin of each rule in brackets.
    `app` module is Compose UI only. [Euchre]
 20. Game state is a `@Serializable` snapshot; **save after every action**, so the app resumes exactly
    where he left off. Previous screen state is never lost if Android kills the app.
+20a. **A save that fails to load must never be silently replaced by fresh/seed data.** Keep balances
+   and records under their own small keys, and use `Store.load` (it backs up unreadable saves to
+   `<key>.unreadable`). Add new fields with defaults so old saves keep loading. [Blackjack review]
 21. Stats screen: big headline numbers, streaks, best scores, recent games, two-tap reset. Show a
    one-line stat on the home screen and in the end-of-game panel. [Euchre]
 22. Settings: grouped cards, every toggle has a one-line plain-English explanation; presets for
