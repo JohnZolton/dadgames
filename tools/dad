@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Drive dad's phone (Galaxy S21 FE) for research. Usage:
+#   dad shot NAME        screenshot -> research/shots/NAME.png (prints path)
+#   dad tap X Y          tap (device px)
+#   dad swipe X1 Y1 X2 Y2 [MS]
+#   dad back | home
+#   dad open PKG         launch an app
+#   dad ui               dump visible text + bounds
+#   dad sh ...           raw adb shell
+set -e
+SER=${DAD_SERIAL:-192.168.8.143:45499}
+A="$HOME/Android/Sdk/platform-tools/adb -s $SER"
+OUT=~/dadgames/research/shots
+cmd=$1; shift || true
+case "$cmd" in
+  shot) $A exec-out screencap -p > "$OUT/$1.png"; echo "$OUT/$1.png" ;;
+  tap) $A shell input tap "$1" "$2" ;;
+  swipe) $A shell input swipe "$1" "$2" "$3" "$4" "${5:-300}" ;;
+  back) $A shell input keyevent KEYCODE_BACK ;;
+  home) $A shell input keyevent KEYCODE_HOME ;;
+  open) $A shell monkey -p "$1" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 ;;
+  ui) $A shell uiautomator dump /sdcard/u.xml >/dev/null 2>&1; $A shell cat /sdcard/u.xml | python3 -c "
+import re,sys
+for m in re.finditer(r'(?:text|content-desc)=\"([^\"]+)\"[^>]*?bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"', sys.stdin.read()):
+    t,x1,y1,x2,y2=m.groups(); print(f'{(int(x1)+int(x2))//2:5d},{(int(y1)+int(y2))//2:5d}  {t}')" ;;
+  sh) $A shell "$@" ;;
+  *) echo "unknown: $cmd"; exit 1 ;;
+esac
