@@ -78,6 +78,25 @@ Origin of each rule in brackets.
     different button. [Blackjack review]
 12z. Hold gestures need a hold well beyond the system long-press (≈800 ms) with visible progress, so slow
     deliberate taps don't trigger them. Pause game loops when the app is backgrounded. [Blackjack review]
+13a. When hints can undo progress, test with a bot that **follows the hints** across thousands of games
+    and fails on any repeated position; when no real progress exists, say so. [Solitaire review]
+13b. Don't put a rule from research notes into the app or its help text ("same as your old app") until
+    a screenshot or the original's code confirms it. [Solitaire review: scoring]
+13c. **Any button that throws away a game in progress asks first** and says what it costs ("counts as
+    a loss"). Detect "stuck" automatically after every move; don't wait for him to press Hint.
+    [Solitaire review]
+13d. **A drag commits where the finger lifts** (apply the up event's position), and a **cancelled gesture
+    is not a release**: it glides back. Picking something up and putting it back where it came from
+    must always be safe (no drop target while the finger is still over the source). Accept a new grab
+    while the previous piece is still animating (finish/snap the old animation). [Blocks review]
+13e. Navigation uses a back stack, not one shared "return to" variable; test every Settings → Help →
+    Back → Back route and relaunch after it. [Blocks review: trapped in Settings]
+13f. Set an animation's starting state in the **same frame** as the move that triggers it; animations
+    started in `LaunchedEffect` begin a frame late and flash. [Blocks review]
+13g. Counters for replayable content (dailies) count each date once. [Blocks, Solitaire, Sudoku reviews]
+13h. **When the original's exact rules matter (scoring, generation), decompile the original APK**
+    instead of guessing (Unity IL2CPP: Il2CppDumper + capstone). It recovered his Solitaire formula
+    exactly. [Solitaire scoring]
 
 ## Interaction and animation
 13. **Support both tap and drag/swipe** for moving pieces/cards. [Euchre]
