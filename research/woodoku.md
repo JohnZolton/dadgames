@@ -27,3 +27,15 @@ Screens: `shots/w01`–`w08`.
 
 ## His numbers
 Best ever 2447; this year 2158; month 1380; week 1380; today 750.
+
+## Exact rules (decompiled from his APK v2.11.02; bundled config defaults, remote config may override)
+- **Scoring (matches ours):** per move `cells + 18·C + 10·max(0, C−1) + 10·S`, C = regions cleared by the move
+  (rows, columns, boxes all equal), S = consecutive clearing moves *before* this one (a clearing move adds 1
+  afterwards; a non-clearing move resets to 0). Multiplier 1.0 in Classic. Streak isn't saved (resets on resume).
+- **Pieces:** 17 base shapes A–Q with weights per stage; stage chosen by trays dealt this game
+  (stage starts at trays 0,1,2,3,6,7,9,10,12,15,19,24). Each draw: weighted pick, 50% mirror, then rotate
+  0/90/180° CCW (never 270). Tray of 3; a duplicate shape is redrawn once. New tray only when all 3 placed.
+  **one_valid_move_rule:** after dealing, if none of the 3 fits, one random piece becomes a single block.
+  No other board awareness. Full table: `woodoku-pieces.txt`; config: `woodoku-config-defaults.json`.
+- **Daily:** id (year−2000)·10000 + month·100 + day seeds the day; gem type = month; goal 10 gems;
+  6 symmetric pre-placed gem blocks; same piece table. (Inferred: 87.5% of new pieces carry a gem.)

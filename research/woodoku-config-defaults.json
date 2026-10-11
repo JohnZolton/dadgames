@@ -1,0 +1,816 @@
+{
+ "reward_by_placing": 1,
+ "reward_by_clearing": 18,
+ "reward_by_combo": 10,
+ "reward_by_streak": 10,
+ "one_valid_move_rule": true,
+ "first_bank_valid_rule": false,
+ "dc_special_block_chance_max": 12,
+ "dc_special_block_chance_min": 12,
+ "dc_special_tiles_chance": 0.875,
+ "dc_symmetrical_config": true,
+ "dc_starting_blocks_region_max": 4,
+ "dc_blocks_max": 6,
+ "dc_blocks_min": 6,
+ "tiny_gem_requirements": 1,
+ "small_gem_requirements": 3,
+ "medium_gem_requirements": 10,
+ "large_gem_requirements": 24,
+ "ads_interstitial_retry_timeout": 9999999,
+ "ads_rewarded_video_retry_timeout": 99999999,
+ "ads_rewarded_video_prefetch_delay": 99999999,
+ "ads_interstitial_prefetch_delay": 40,
+ "dc_surface_after": 10,
+ "dc_surface_persists": false,
+ "splashscreen_timeout": 2.0,
+ "stats_today": true,
+ "stats_week": true,
+ "stats_month": true,
+ "stats_year": true,
+ "economy_available": false,
+ "show_purse_in_lobby": false,
+ "show_purse_in_journey": false,
+ "dc_and_classic_screens_enabled": false,
+ "lobby_screen_enabled": true,
+ "gem_collection_button_lobby": true,
+ "calendar_button_lobby": true,
+ "x_for_unlock_journey": 1,
+ "native_app_update": 0,
+ "new_journey_popup_delay": 4.0,
+ "journey_back_button_enabled": true,
+ "onboarding_tutorial_row_step_enabled": true,
+ "onboarding_tutorial_column_step_enabled": true,
+ "onboarding_tutorial_region_step_enabled": true,
+ "flexible_popup_enabled": false,
+ "game_end_lose_journey_flow": "default",
+ "figure_set": [
+  {
+   "from": 0,
+   "set": {
+    "figures_frequency": {
+     "B": 10,
+     "C": 5,
+     "D": 5,
+     "E": 5,
+     "F": 5,
+     "G": 15,
+     "H": 15,
+     "I": 10,
+     "J": 10,
+     "L": 10,
+     "M": 10
+    }
+   }
+  },
+  {
+   "from": 1,
+   "set": {
+    "figures_frequency": {
+     "B": 5,
+     "C": 5,
+     "D": 5,
+     "E": 5,
+     "F": 5,
+     "G": 15,
+     "H": 15,
+     "I": 10,
+     "J": 10,
+     "L": 15,
+     "M": 10
+    }
+   }
+  },
+  {
+   "from": 2,
+   "set": {
+    "figures_frequency": {
+     "A": 5,
+     "B": 5,
+     "C": 7,
+     "D": 5,
+     "E": 3,
+     "F": 5,
+     "G": 15,
+     "H": 15,
+     "I": 10,
+     "J": 10,
+     "L": 15,
+     "M": 5
+    }
+   }
+  },
+  {
+   "from": 3,
+   "set": {
+    "figures_frequency": {
+     "A": 5,
+     "B": 5,
+     "C": 7,
+     "D": 5,
+     "E": 3,
+     "F": 5,
+     "G": 15,
+     "H": 15,
+     "I": 10,
+     "J": 5,
+     "K": 5,
+     "L": 15,
+     "M": 5
+    }
+   }
+  },
+  {
+   "from": 6,
+   "set": {
+    "figures_frequency": {
+     "A": 1,
+     "B": 5,
+     "C": 5,
+     "D": 7,
+     "E": 7,
+     "F": 7,
+     "G": 15,
+     "H": 10,
+     "I": 15,
+     "J": 8,
+     "K": 5,
+     "L": 10,
+     "M": 5
+    }
+   }
+  },
+  {
+   "from": 7,
+   "set": {
+    "figures_frequency": {
+     "A": 1,
+     "B": 5,
+     "C": 5,
+     "D": 7,
+     "E": 7,
+     "F": 7,
+     "G": 10,
+     "H": 10,
+     "I": 10,
+     "J": 8,
+     "K": 5,
+     "L": 10,
+     "M": 5,
+     "N": 3,
+     "O": 3,
+     "P": 3,
+     "Q": 1
+    }
+   }
+  },
+  {
+   "from": 9,
+   "set": {
+    "figures_frequency": {
+     "B": 5,
+     "C": 5,
+     "D": 5,
+     "E": 8,
+     "F": 5,
+     "G": 10,
+     "H": 10,
+     "I": 10,
+     "J": 8,
+     "K": 5,
+     "L": 10,
+     "M": 5,
+     "N": 4,
+     "O": 4,
+     "P": 4,
+     "Q": 2
+    }
+   }
+  },
+  {
+   "from": 10,
+   "set": {
+    "figures_frequency": {
+     "B": 4,
+     "C": 4,
+     "D": 4,
+     "E": 9,
+     "F": 4,
+     "G": 9,
+     "H": 9,
+     "I": 9,
+     "J": 9,
+     "K": 6,
+     "L": 9,
+     "M": 6,
+     "N": 5,
+     "O": 5,
+     "P": 5,
+     "Q": 3
+    }
+   }
+  },
+  {
+   "from": 12,
+   "set": {
+    "figures_frequency": {
+     "B": 3,
+     "C": 3,
+     "D": 4,
+     "E": 9,
+     "F": 4,
+     "G": 9,
+     "H": 8,
+     "I": 9,
+     "J": 9,
+     "K": 7,
+     "L": 9,
+     "M": 7,
+     "N": 5,
+     "O": 5,
+     "P": 5,
+     "Q": 4
+    }
+   }
+  },
+  {
+   "from": 15,
+   "set": {
+    "figures_frequency": {
+     "B": 2,
+     "C": 2,
+     "D": 4,
+     "E": 9,
+     "F": 4,
+     "G": 9,
+     "H": 7,
+     "I": 9,
+     "J": 9,
+     "K": 8,
+     "L": 9,
+     "M": 8,
+     "N": 5,
+     "O": 5,
+     "P": 5,
+     "Q": 5
+    }
+   }
+  },
+  {
+   "from": 19,
+   "set": {
+    "figures_frequency": {
+     "B": 1,
+     "C": 1,
+     "D": 3,
+     "E": 9,
+     "F": 3,
+     "G": 9,
+     "H": 7,
+     "I": 9,
+     "J": 9,
+     "K": 9,
+     "L": 9,
+     "M": 9,
+     "N": 6,
+     "O": 6,
+     "P": 5,
+     "Q": 5
+    }
+   }
+  },
+  {
+   "from": 24,
+   "set": {
+    "figures_frequency": {
+     "D": 2,
+     "E": 8,
+     "F": 3,
+     "G": 9,
+     "H": 5,
+     "I": 9,
+     "J": 10,
+     "K": 10,
+     "L": 9,
+     "M": 10,
+     "N": 7,
+     "O": 5,
+     "P": 7,
+     "Q": 6
+    }
+   }
+  }
+ ],
+ "dc_figure_set": [
+  {
+   "from": 0,
+   "set": {
+    "figures_frequency": {
+     "B": 10,
+     "C": 5,
+     "D": 5,
+     "E": 5,
+     "F": 5,
+     "G": 15,
+     "H": 15,
+     "I": 10,
+     "J": 10,
+     "L": 10,
+     "M": 10
+    }
+   }
+  },
+  {
+   "from": 1,
+   "set": {
+    "figures_frequency": {
+     "B": 5,
+     "C": 5,
+     "D": 5,
+     "E": 5,
+     "F": 5,
+     "G": 15,
+     "H": 15,
+     "I": 10,
+     "J": 10,
+     "L": 15,
+     "M": 10
+    }
+   }
+  },
+  {
+   "from": 2,
+   "set": {
+    "figures_frequency": {
+     "A": 5,
+     "B": 5,
+     "C": 7,
+     "D": 5,
+     "E": 3,
+     "F": 5,
+     "G": 15,
+     "H": 15,
+     "I": 10,
+     "J": 10,
+     "L": 15,
+     "M": 5
+    }
+   }
+  },
+  {
+   "from": 3,
+   "set": {
+    "figures_frequency": {
+     "A": 5,
+     "B": 5,
+     "C": 7,
+     "D": 5,
+     "E": 3,
+     "F": 5,
+     "G": 15,
+     "H": 15,
+     "I": 10,
+     "J": 5,
+     "K": 5,
+     "L": 15,
+     "M": 5
+    }
+   }
+  },
+  {
+   "from": 6,
+   "set": {
+    "figures_frequency": {
+     "A": 1,
+     "B": 5,
+     "C": 5,
+     "D": 7,
+     "E": 7,
+     "F": 7,
+     "G": 15,
+     "H": 10,
+     "I": 15,
+     "J": 8,
+     "K": 5,
+     "L": 10,
+     "M": 5
+    }
+   }
+  },
+  {
+   "from": 7,
+   "set": {
+    "figures_frequency": {
+     "A": 1,
+     "B": 5,
+     "C": 5,
+     "D": 7,
+     "E": 7,
+     "F": 7,
+     "G": 10,
+     "H": 10,
+     "I": 10,
+     "J": 8,
+     "K": 5,
+     "L": 10,
+     "M": 5,
+     "N": 3,
+     "O": 3,
+     "P": 3,
+     "Q": 1
+    }
+   }
+  },
+  {
+   "from": 9,
+   "set": {
+    "figures_frequency": {
+     "B": 5,
+     "C": 5,
+     "D": 5,
+     "E": 8,
+     "F": 5,
+     "G": 10,
+     "H": 10,
+     "I": 10,
+     "J": 8,
+     "K": 5,
+     "L": 10,
+     "M": 5,
+     "N": 4,
+     "O": 4,
+     "P": 4,
+     "Q": 2
+    }
+   }
+  },
+  {
+   "from": 10,
+   "set": {
+    "figures_frequency": {
+     "B": 4,
+     "C": 4,
+     "D": 4,
+     "E": 9,
+     "F": 4,
+     "G": 9,
+     "H": 9,
+     "I": 9,
+     "J": 9,
+     "K": 6,
+     "L": 9,
+     "M": 6,
+     "N": 5,
+     "O": 5,
+     "P": 5,
+     "Q": 3
+    }
+   }
+  },
+  {
+   "from": 12,
+   "set": {
+    "figures_frequency": {
+     "B": 3,
+     "C": 3,
+     "D": 4,
+     "E": 9,
+     "F": 4,
+     "G": 9,
+     "H": 8,
+     "I": 9,
+     "J": 9,
+     "K": 7,
+     "L": 9,
+     "M": 7,
+     "N": 5,
+     "O": 5,
+     "P": 5,
+     "Q": 4
+    }
+   }
+  },
+  {
+   "from": 15,
+   "set": {
+    "figures_frequency": {
+     "B": 2,
+     "C": 2,
+     "D": 4,
+     "E": 9,
+     "F": 4,
+     "G": 9,
+     "H": 7,
+     "I": 9,
+     "J": 9,
+     "K": 8,
+     "L": 9,
+     "M": 8,
+     "N": 5,
+     "O": 5,
+     "P": 5,
+     "Q": 5
+    }
+   }
+  },
+  {
+   "from": 19,
+   "set": {
+    "figures_frequency": {
+     "B": 1,
+     "C": 1,
+     "D": 3,
+     "E": 9,
+     "F": 3,
+     "G": 9,
+     "H": 7,
+     "I": 9,
+     "J": 9,
+     "K": 9,
+     "L": 9,
+     "M": 9,
+     "N": 6,
+     "O": 6,
+     "P": 5,
+     "Q": 5
+    }
+   }
+  },
+  {
+   "from": 24,
+   "set": {
+    "figures_frequency": {
+     "D": 2,
+     "E": 8,
+     "F": 3,
+     "G": 9,
+     "H": 5,
+     "I": 9,
+     "J": 10,
+     "K": 10,
+     "L": 9,
+     "M": 10,
+     "N": 7,
+     "O": 5,
+     "P": 7,
+     "Q": 6
+    }
+   }
+  }
+ ],
+ "ad_remote_config": {
+  "enable_banners": true,
+  "banner_position": "top",
+  "placements": {
+   "game_start_restart_settings": {
+    "interstitial_probability": 1.0,
+    "interstitial": {
+     "newcomers_restrictions": {
+      "first_session_only": true,
+      "block_first_seconds": 40,
+      "block_first_impressions": 0,
+      "timer_counts_in_background": true
+     }
+    }
+   },
+   "game_end_classic_lose_after_anim": {
+    "interstitial_probability": 1.0,
+    "interstitial": {
+     "newcomers_restrictions": {
+      "first_session_only": true,
+      "block_first_seconds": 40,
+      "block_first_impressions": 0,
+      "timer_counts_in_background": true
+     }
+    }
+   },
+   "game_end_dc_win_after_anim": {
+    "interstitial_probability": 1.0,
+    "interstitial": {
+     "newcomers_restrictions": {
+      "first_session_only": true,
+      "block_first_seconds": 40,
+      "block_first_impressions": 0,
+      "timer_counts_in_background": true
+     }
+    }
+   },
+   "game_end_dc_lose_after_anim": {
+    "interstitial_probability": 1.0,
+    "interstitial": {
+     "newcomers_restrictions": {
+      "first_session_only": true,
+      "block_first_seconds": 40,
+      "block_first_impressions": 0,
+      "timer_counts_in_background": true
+     }
+    }
+   },
+   "game_end_journey_win_after_anim": {
+    "interstitial_probability": 1.0,
+    "interstitial": {
+     "newcomers_restrictions": {
+      "first_session_only": true,
+      "block_first_seconds": 40,
+      "block_first_impressions": 0,
+      "timer_counts_in_background": true
+     }
+    }
+   },
+   "game_end_journey_lose_after_anim": {
+    "interstitial_probability": 1.0,
+    "interstitial": {
+     "newcomers_restrictions": {
+      "first_session_only": true,
+      "block_first_seconds": 40,
+      "block_first_impressions": 0,
+      "timer_counts_in_background": true
+     }
+    }
+   }
+  },
+  "cross_promos": [],
+  "ad_request_refresh_period": 1,
+  "ad_request_refresh_period_increment_value": "4.0",
+  "ad_request_refresh_period_max_value": 16
+ },
+ "localizations_config": {
+  "default_language": "system",
+  "supported_languages": [
+   "system",
+   "current",
+   "en",
+   "zh-Hans",
+   "da",
+   "nl",
+   "fi",
+   "fr",
+   "de",
+   "it",
+   "ja",
+   "nb",
+   "pl",
+   "pt",
+   "pt-BR",
+   "ru",
+   "es",
+   "es-MX",
+   "sv",
+   "ko"
+  ],
+  "languages_in_popup": [
+   "current",
+   "system",
+   "en",
+   "zh-Hans",
+   "da",
+   "nl",
+   "fi",
+   "fr",
+   "de",
+   "it",
+   "ja",
+   "ko",
+   "nb",
+   "pl",
+   "pt",
+   "pt-BR",
+   "ru",
+   "es",
+   "es-MX",
+   "sv"
+  ],
+  "show_languages_popup": false
+ },
+ "figures_shape_map": {
+  "figures_shapes": {
+   "A": "1",
+   "B": "11",
+   "C": "111",
+   "D": "1111",
+   "E": "11111",
+   "F": "11\n11",
+   "G": "011\n110",
+   "H": "10\n11",
+   "I": "100\n111",
+   "J": "100\n100\n111",
+   "K": "010\n111\n010",
+   "L": "10\n11\n10",
+   "M": "100\n111\n100",
+   "N": "101\n111",
+   "O": "01\n10",
+   "P": "001\n010\n100",
+   "Q": "0001\n0010\n0100\n1000"
+  }
+ },
+ "token_bar_position": "above_shapes",
+ "unlock_journey": "x_calendar_days_after_install",
+ "limit_map_scroll_from_x": 999,
+ "journey_awards_hide_asset": false,
+ "journey_awards_auto_collect": false,
+ "journey_auto_redirect_delay": {
+  "surfacing": 9999,
+  "push": 9999,
+  "award": 9999
+ },
+ "dc_adaptive_difficulty": {
+  "goal_amount_initial": 10,
+  "goal_amount_max": 10,
+  "goal_amount_min": 10,
+  "attempts_threshold": 4,
+  "goal_amount_increment": 0.0,
+  "goal_amount_decrement": 0.0
+ },
+ "appsflyer_client_ad_revenue_timeframe": 24.0,
+ "ios_idfa_request_enabled": false,
+ "ios_idfa_explainer_popup_enabled": false,
+ "ios_idfa_fake_native_popup_enabled": false,
+ "ios_idfa_native_popup_enabled": false,
+ "popups": {
+  "order": [
+   "Language_Menu",
+   "IDFA",
+   "Allow_Notifications",
+   "GDPR",
+   "Rate_Us",
+   "Native_app_update"
+  ],
+  "triggers": {
+   "GDPR": {
+    "conditions": [
+     {
+      "app_starts": [
+       1
+      ],
+      "game_starts": [
+       0
+      ]
+     }
+    ]
+   },
+   "Allow_Notifications": {
+    "conditions": [
+     {
+      "app_starts": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10
+      ],
+      "game_starts": [
+       0
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "zendesk_support_available": false,
+ "offline_games": {
+  "offline_game_threshold": 0,
+  "offline_game_period": 0
+ },
+ "rate_us_popups": {
+  "min_days_since_last_popup_exposure": 100,
+  "triggers": [
+   {
+    "type": "rate_us_popup_5_stars",
+    "trigger_name": "rate_us_app_start_x_game_start_y",
+    "redirect_to_app_store": true,
+    "block_interstitial": false,
+    "rate_us_app_start_x": 1,
+    "rate_us_game_start_y": 4
+   },
+   {
+    "type": "rate_us_popup_5_stars",
+    "trigger_name": "rate_us_app_start_x_game_start_y",
+    "redirect_to_app_store": true,
+    "block_interstitial": false,
+    "rate_us_app_start_x": 2,
+    "rate_us_game_start_y": 3
+   },
+   {
+    "type": "rate_us_popup_5_stars",
+    "trigger_name": "rate_us_app_start_x_game_start_y",
+    "redirect_to_app_store": true,
+    "block_interstitial": false,
+    "rate_us_app_start_x": 3,
+    "rate_us_game_start_y": 2
+   }
+  ]
+ },
+ "journey_surfacing_popups": {
+  "triggers": [
+   {
+    "trigger_name": "surfacing_after_x_lobby_stats_views",
+    "x_lobby_stats_view": 1
+   }
+  ]
+ },
+ "appsflyer_event_whitelist": "client_ad_revenue,game_start,ad_impression_interstitial,ad_impression_interstitial5,ad_impression_interstitial10,ad_impression_interstitial25,ad_impression_interstitial50,ad_impression_interstitial100,af_ad_revenue,game_end1,game_end5,game_end10,game_end25,game_end50,game_end100,journey_level_won1,journey_level_won2,journey_level_won5,journey_level_won12,journey_level_won20,journey_level_won32,journey_level_won60,journey_game_end1,journey_game_end5,journey_game_end10,journey_game_end25,journey_game_end50,dailychallenge_win_1,dailychallenge_win_2,dailychallenge_win_3,dailychallenge_win_5,scorereached_250,scorereached_500,scorereached_1000,scorereached_1500,scorereached_2000,scorereached_2500,scorereached_3000,dailychallenge_win_10"
+}
