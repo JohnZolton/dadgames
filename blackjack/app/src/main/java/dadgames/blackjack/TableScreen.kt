@@ -431,8 +431,7 @@ private fun BetChips(vm: GameViewModel, g: Game, geo: Geo) {
     } ?: 0f
     for ((i, h) in g.hands.withIndex()) {
         val b = boxes[i]
-        // Stacks follow their hand
- (keyed by its first card), so a split doesn't shuffle them.
+        // Stacks follow their hand (keyed by its first card), so a split doesn't shuffle them.
         val k = (h.cards.firstOrNull()?.id ?: i) * 4
         // One hand: a big stack left of the cards, like his app. Split hands: a small stack under each hand.
         val size = if (single) 64f else 30f
