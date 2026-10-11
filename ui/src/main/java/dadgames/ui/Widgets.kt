@@ -314,7 +314,8 @@ fun ResultPanel(title: String, content: @Composable ColumnScope.() -> Unit) {
             shape = RoundedCornerShape(28.dp), color = P.panel,
             modifier = Modifier.padding(28.dp).widthIn(max = 420.dp).border(1.dp, P.panelLine, RoundedCornerShape(28.dp)),
         ) {
-            Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            // Scrolls so nothing clips at large system font sizes. [BEST_PRACTICES #12g]
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(title, style = MaterialTheme.typography.headlineSmall, color = P.accent, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(10.dp))
                 content()
