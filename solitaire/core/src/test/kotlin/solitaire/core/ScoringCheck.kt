@@ -28,8 +28,8 @@ class ScoringCheck {
                 finals += g.finalScore; bases += g.score; moves += g.moves; recycles += g.recycles
             }
             rows += "${clock(target)} win: final ${finals.min()}..${finals.max()} (avg ${finals.average().toInt()}), " +
-                "points before bonus avg ${bases.average().toInt()}, bonus ${Scoring.timeBonus(target - 1)}, moves avg ${moves.average().toInt()}, " +
-                "stock turned over avg ${"%.1f".format(recycles.average())} times (-100 each)"
+                "points before bonus avg ${bases.average().toInt()}, bonus avg ${(finals.average() - bases.average()).toInt()}, moves avg ${moves.average().toInt()}, " +
+                "stock turned over avg ${"%.1f".format(recycles.average())} times (-200 each)"
         }
         rows.forEach { println("scoring: $it") }
     }

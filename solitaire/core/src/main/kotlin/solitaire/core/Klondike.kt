@@ -32,6 +32,13 @@ sealed interface Move {
     /** Move the top [count] cards of [from] onto [to]. */
     @Serializable @SerialName("move")
     data class Transfer(val from: Loc, val to: Loc, val count: Int = 1) : Move
+
+    /**
+     * Auto-complete only (every column card face up): send the card at [index] of the stock or waste
+     * ([from]) straight up to foundation [to], without drawing through to it.
+     */
+    @Serializable @SerialName("collect")
+    data class Collect(val from: PileType, val index: Int, val to: Int) : Move
 }
 
 /** What undo needs to put a move back exactly. */
@@ -41,41 +48,12 @@ data class Step(
     val drawn: Int = 0,
     val recycled: Boolean = false,
     val flipped: Boolean = false,
-    val scoreBefore: Int,
-    val ticksBefore: Int,
+    /** Points the move actually changed the score by (after clamping at zero); undo takes them back. */
+    val points: Int = 0,
+    val scoreBefore: Int = 0,
+    val ticksBefore: Int = 0,
     val movesBefore: Int,
 )
-
-/**
- * Windows "standard" Klondike scoring, which dad's app uses. [research/solitaire.md]
- */
-object Scoring {
-    const val WASTE_TO_TABLEAU = 5
-    const val TO_FOUNDATION = 10
-    const val TURN_OVER = 5
-    const val FOUNDATION_TO_TABLEAU = -15
-    /** Draw 1: every time the waste is turned back over. */
-    const val RECYCLE_DRAW1 = -100
-    /** Draw 3: every time the waste is turned back over after the third pass. */
-    const val RECYCLE_DRAW3 = -20
-    const val FREE_DRAW3_RECYCLES = 3
-    const val TIME_PENALTY = 2
-    const val TIME_PENALTY_EVERY_MS = 10_000L
-    const val BONUS_NUMERATOR = 700_000
-    const val BONUS_MIN_SECONDS = 30
-    /**
-     * Wins faster than this get the same bonus as a win in exactly this time (700000 / 150 = 4666).
-     * Windows has no such cap, but dad's records only fit with one: his top-10 wins took 1:44 to 2:29 and
-     * all scored 5195-5371 (uncapped, his 1:56 win alone would get a 6034 bonus), and his fastest win
-     * (1:28) isn't in his top 10 at all. With the cap his wins work out to 530-700 points before the bonus,
-     * which is what Windows scoring gives a clean game. [research/README.md]
-     */
-    const val BONUS_TIME_FLOOR = 150L
-
-    /** Bonus for a win that took [seconds]: none for 30 s or less (like Windows), else 700000 / seconds. */
-    fun timeBonus(seconds: Long): Int =
-        if (seconds <= BONUS_MIN_SECONDS) 0 else (BONUS_NUMERATOR / maxOf(seconds, BONUS_TIME_FLOOR)).toInt()
-}
 
 /**
  * One game of Klondike. Immutable: every action returns a new state, so it is a safe snapshot to save,
@@ -87,6 +65,8 @@ object Scoring {
 data class Klondike(
     val seed: Long,
     val draw: Int = 1,
+    /** Which scoring this game uses (see Scoring.kt). */
+    val scoring: ScoringMode = ScoringMode.OLD_APP,
     val stock: List<Card>,
     val waste: List<Card>,
     val foundations: List<List<Card>>,
@@ -108,6 +88,7 @@ data class Klondike(
     val history: List<Step> = emptyList(),
 ) {
     val seconds: Long get() = elapsedMs / 1000
+    private val rules: ScoreRules get() = scoring.rules
     val finalScore: Int get() = score + bonus
     val canUndo: Boolean get() = history.isNotEmpty() && !won
 
@@ -118,9 +99,12 @@ data class Klondike(
         PileType.TABLEAU -> tableau[loc.index]
     }
 
-    /** Every card face up, stock and waste used up: the rest can be played automatically. */
+    /**
+     * Every column card is face up: the rest can always be played out automatically (the lowest card not yet
+     * up is always on top of a column or somewhere in the stock or waste), even with cards left in the stock.
+     */
     val canAutoComplete: Boolean
-        get() = !won && stock.isEmpty() && waste.isEmpty() && faceDown.all { it == 0 } && tableau.any { it.isNotEmpty() }
+        get() = !won && faceDown.all { it == 0 } && foundations.sumOf { it.size } < 52
 
     // ------------------------------------------------------------ rules
 
@@ -193,6 +177,7 @@ data class Klondike(
         return when (m) {
             Move.Draw -> drawCards()
             is Move.Transfer -> transfer(m)
+            is Move.Collect -> collect(m)
         }
     }
 
@@ -202,15 +187,11 @@ data class Klondike(
         if (stock.isEmpty()) {
             if (waste.isEmpty()) return null
             val r = recycles + 1
-            val penalty = when {
-                draw == 1 -> Scoring.RECYCLE_DRAW1
-                r > Scoring.FREE_DRAW3_RECYCLES -> Scoring.RECYCLE_DRAW3
-                else -> 0
-            }
+            val sc = Scoring.add(score, rules.forRecycle(draw, r))
             return copy(
                 stock = waste.reversed(), waste = emptyList(), recycles = r,
-                score = maxOf(0, score + penalty), moves = moves + 1, started = true,
-                history = recorded(Step(Move.Draw, recycled = true, scoreBefore = score, ticksBefore = ticks, movesBefore = moves)),
+                score = sc, moves = moves + 1, started = true,
+                history = recorded(Step(Move.Draw, recycled = true, points = sc - score, scoreBefore = score, ticksBefore = ticks, movesBefore = moves)),
             )
         }
         val n = minOf(draw, stock.size)
@@ -240,12 +221,7 @@ data class Klondike(
             PileType.FOUNDATION -> if (count != 1 || from.type == PileType.FOUNDATION || !foundationAccepts(to.index, first)) return null
             PileType.TABLEAU -> if (!tableauAccepts(to.index, first)) return null
         }
-        var points = when {
-            to.type == PileType.FOUNDATION -> Scoring.TO_FOUNDATION
-            from.type == PileType.WASTE -> Scoring.WASTE_TO_TABLEAU
-            from.type == PileType.FOUNDATION -> Scoring.FOUNDATION_TO_TABLEAU
-            else -> 0
-        }
+        var sc = Scoring.add(score, rules.forMove(from.type, to.type))
         var newStock = stock
         var newWaste = waste
         val newFound = foundations.toMutableList()
@@ -269,25 +245,45 @@ data class Klondike(
             if (remaining.isNotEmpty() && newDown[i] >= remaining.size) {
                 newDown[i] = remaining.size - 1
                 flipped = true
-                points += Scoring.TURN_OVER
+                sc = Scoring.add(sc, rules.forTurnOver())
             }
         }
         val next = copy(
             stock = newStock, waste = newWaste, foundations = newFound, tableau = newTab, faceDown = newDown,
-            score = maxOf(0, score + points), moves = moves + 1, started = true,
-            history = recorded(Step(m, flipped = flipped, scoreBefore = score, ticksBefore = ticks, movesBefore = moves)),
+            score = sc, moves = moves + 1, started = true,
+            history = recorded(Step(m, flipped = flipped, points = sc - score, scoreBefore = score, ticksBefore = ticks, movesBefore = moves)),
         )
-        return if (next.foundations.all { it.size == 13 }) next.copy(won = true, bonus = Scoring.timeBonus(next.seconds)) else next
+        return next.checkWin()
+    }
+
+    private fun checkWin(): Klondike =
+        if (foundations.all { it.size == 13 }) copy(won = true, bonus = rules.winBonus(score, seconds)) else this
+
+    private fun collect(m: Move.Collect): Klondike? {
+        if (!canAutoComplete || m.to !in 0..3) return null
+        val src = when (m.from) { PileType.STOCK -> stock; PileType.WASTE -> waste; else -> return null }
+        val card = src.getOrNull(m.index) ?: return null
+        if (!foundationAccepts(m.to, card)) return null
+        val rest = src.toMutableList().apply { removeAt(m.index) }
+        val newFound = foundations.toMutableList().apply { this[m.to] = foundations[m.to] + card }
+        val base = if (m.from == PileType.STOCK) copy(stock = rest) else copy(waste = rest)
+        val sc = Scoring.add(score, rules.forMove(m.from, PileType.FOUNDATION))
+        return base.copy(
+            foundations = newFound, score = sc,
+            moves = moves + 1, started = true,
+            history = recorded(Step(m, points = sc - score, scoreBefore = score, ticksBefore = ticks, movesBefore = moves)),
+        ).checkWin()
     }
 
     /**
-     * Take back the last move: cards, score and move count go back exactly; the clock and the time
-     * penalty already charged do not.
+     * Take back the last move: cards and move count go back exactly, the move's points come back off,
+     * and the scoring's undo cost applies (25 points in the old app's scoring). The clock doesn't go back.
      */
     fun undo(): Klondike? {
         if (!canUndo) return null
         val s = history.last()
-        val restoredScore = maxOf(0, s.scoreBefore - Scoring.TIME_PENALTY * (ticks - s.ticksBefore))
+        // The move's own points come back off exactly (a turned-over card's too), then the undo cost.
+        val restoredScore = Scoring.add(Scoring.add(score, -s.points), rules.undoCost())
         val base = copy(history = history.dropLast(1), score = restoredScore, moves = s.movesBefore)
         return when (val m = s.move) {
             Move.Draw -> if (s.recycled) {
@@ -319,6 +315,12 @@ data class Klondike(
                 }
                 base.copy(stock = newStock, waste = newWaste, foundations = newFound, tableau = newTab, faceDown = newDown)
             }
+            is Move.Collect -> {
+                val card = foundations[m.to].last()
+                val found = foundations.toMutableList().apply { this[m.to] = foundations[m.to].dropLast(1) }
+                if (m.from == PileType.STOCK) base.copy(foundations = found, stock = stock.toMutableList().apply { add(m.index, card) })
+                else base.copy(foundations = found, waste = waste.toMutableList().apply { add(m.index, card) })
+            }
         }
     }
 
@@ -328,22 +330,28 @@ data class Klondike(
      */
     fun tick(ms: Long): Klondike {
         if (!started || won || ms <= elapsedMs) return this
-        val t = (ms / Scoring.TIME_PENALTY_EVERY_MS).toInt()
+        val t = (ms / Scoring.TIME_STEP_MS).toInt()
         var sc = score
-        repeat(t - ticks) { sc = maxOf(0, sc - Scoring.TIME_PENALTY) }
+        if (rules.perTenSeconds() != 0) repeat(t - ticks) { sc = Scoring.add(sc, rules.perTenSeconds()) }
         return copy(elapsedMs = ms, ticks = t, score = sc)
     }
 
-    /** The next card to send up during auto-complete: the lowest top card. */
-    fun autoCompleteMove(): Move.Transfer? {
+    /**
+     * The next card to send up during auto-complete: the lowest card that can go up, from a column top, the
+     * waste top, or anywhere in the stock or waste.
+     */
+    fun autoCompleteMove(): Move? {
         if (!canAutoComplete) return null
-        var best: Move.Transfer? = null
+        var best: Move? = null
         var bestRank = 99
-        for (t in 0..6) {
-            val c = tableau[t].lastOrNull() ?: continue
-            val f = foundationFor(c) ?: continue
-            if (c.rank.value < bestRank) { bestRank = c.rank.value; best = Move.Transfer(Loc.tableau(t), Loc.foundation(f)) }
+        fun offer(c: Card, m: (Int) -> Move) {
+            val f = foundationFor(c) ?: return
+            if (c.rank.value < bestRank) { bestRank = c.rank.value; best = m(f) }
         }
+        for (t in 0..6) tableau[t].lastOrNull()?.let { c -> offer(c) { f -> Move.Transfer(Loc.tableau(t), Loc.foundation(f)) } }
+        waste.lastOrNull()?.let { c -> offer(c) { f -> Move.Transfer(Loc.WASTE, Loc.foundation(f)) } }
+        waste.forEachIndexed { i, c -> if (i != waste.lastIndex) offer(c) { f -> Move.Collect(PileType.WASTE, i, f) } }
+        stock.forEachIndexed { i, c -> offer(c) { f -> Move.Collect(PileType.STOCK, i, f) } }
         return best
     }
 
@@ -355,12 +363,12 @@ data class Klondike(
         fun fromJson(s: String): Klondike = json.decodeFromString(serializer(), s)
 
         /** A fair shuffle of one deck, dealt the usual way: 7 columns of 1..7 cards, top card face up. */
-        fun deal(seed: Long, draw: Int = 1, daily: String? = null): Klondike {
+        fun deal(seed: Long, draw: Int = 1, daily: String? = null, scoring: ScoringMode = ScoringMode.OLD_APP): Klondike {
             val deck = standardDeck().shuffled(Random(seed)).toMutableList()
             val cols = List(7) { mutableListOf<Card>() }
             for (row in 0 until 7) for (c in row until 7) cols[c] += deck.removeAt(deck.lastIndex)
             return Klondike(
-                seed = seed, draw = draw, stock = deck.toList(), waste = emptyList(),
+                seed = seed, draw = draw, scoring = scoring, stock = deck.toList(), waste = emptyList(),
                 foundations = List(4) { emptyList() }, tableau = cols.map { it.toList() },
                 faceDown = List(7) { it }, daily = daily,
             )

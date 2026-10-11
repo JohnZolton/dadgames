@@ -8,7 +8,7 @@ import java.io.File
  * Not a regular test: writes an adb script that plays a daily deal's solver solution through the real UI
  * (drags for card moves, taps on the stock), to check a whole game end to end on the emulator.
  * Run with SOL_DRIVE=<date key> SOL_DRIVE_OUT=<file>. Geometry mirrors the app's Board `Dims`/`layout`
- * for dad's screen (1080 px wide at 2.625 px/dp). SOL_DRIVE_STOP=n stops after n moves (to leave the
+ * for dad's screen (1080 px wide at 3.0 px/dp, 480 dpi). SOL_DRIVE_STOP=n stops after n moves (to leave the
  * end of the game for a screenshot).
  */
 class DriveScript {
@@ -57,6 +57,7 @@ class DriveScript {
             if (n >= stopAfter || (System.getenv("SOL_DRIVE_AUTO") != null && g.canAutoComplete)) break
             when (m) {
                 Move.Draw -> lines += "tap ${P(colX(6) + cw / 2, topY + ch / 2)}"
+                is Move.Collect -> error("solver never collects")
                 is Move.Transfer -> {
                     val from = when (m.from.type) {
                         PileType.WASTE -> P(colX(4) + cw / 2, topY + ch * 0.6f)

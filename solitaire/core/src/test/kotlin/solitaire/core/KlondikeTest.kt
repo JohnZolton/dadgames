@@ -25,7 +25,8 @@ class KlondikeTest {
         found: List<List<Card>> = List(4) { emptyList() },
         draw: Int = 1,
         score: Int = 0,
-    ) = Klondike(seed = 0, draw = draw, stock = stock, waste = waste, foundations = found, tableau = cols, faceDown = down, score = score)
+        scoring: ScoringMode = ScoringMode.WINDOWS,
+    ) = Klondike(seed = 0, draw = draw, scoring = scoring, stock = stock, waste = waste, foundations = found, tableau = cols, faceDown = down, score = score)
 
     private fun col(vararg cards: Card) = cards.toList()
     private fun cols(vararg c: List<Card>) = c.toList() + List(7 - c.size) { emptyList() }
@@ -180,14 +181,13 @@ class KlondikeTest {
         var x = g.apply(Move.Transfer(Loc.tableau(0), Loc.foundation(0)))!!.tick(119_400)
         while (!x.won) x = x.apply(x.autoCompleteMove()!!)!!
         assertEquals(119, x.seconds)
-        assertEquals(4666, x.bonus)
-        assertEquals(x.score + 4666, x.finalScore)
+        assertEquals(700_000 / 119, x.bonus)
+        assertEquals(x.score + 700_000 / 119, x.finalScore)
         assertFalse(x.canUndo)
         assertNull(x.apply(Move.Draw))
-        assertEquals(0, Scoring.timeBonus(30))
-        assertEquals(4666, Scoring.timeBonus(31))
-        assertEquals(4666, Scoring.timeBonus(150))
-        assertEquals(3500, Scoring.timeBonus(200))
+        assertEquals(0, WindowsScoring.winBonus(600, 30))
+        assertEquals(700_000 / 31, WindowsScoring.winBonus(600, 31))
+        assertEquals(3500, WindowsScoring.winBonus(600, 200))
     }
 
     @Test fun autoCompleteNeedsEverythingFaceUp() {
@@ -236,7 +236,7 @@ class KlondikeTest {
         val d = board(cols = cols(col(c(TEN, HEARTS))), stock = listOf(c(FOUR, CLUBS), c(NINE, CLUBS)))
         assertEquals(Move.Draw, d.hint()!!.move)
         // Stuck: stock and board give nothing.
-        val stuck = board(cols = cols(col(c(TEN, HEARTS)), col(c(TEN, SPADES))), stock = listOf(c(FOUR, CLUBS), c(FIVE, CLUBS)))
+        val stuck = board(cols = cols(col(c(TWO, DIAMONDS), c(TEN, HEARTS)), col(c(TEN, SPADES))), down = listOf(1, 0, 0, 0, 0, 0, 0), stock = listOf(c(FOUR, CLUBS), c(FIVE, CLUBS)))
         assertNull(stuck.hint())
         assertTrue(stuck.noMovesLeft())
         // Only way on: bring the Three of Spades down onto the Four of Hearts so the Two of Hearts can follow
@@ -248,7 +248,7 @@ class KlondikeTest {
         )
         val dh = down.hint()!!
         assertEquals(Move.Transfer(Loc.foundation(0), Loc.tableau(0)), dh.move)
-        assertEquals("Bring the Three of Spades back down onto the Four of Hearts.", dh.text)
+        assertEquals("Drag the Three of Spades back down onto the Four of Hearts.", dh.text)
         assertFalse(down.noMovesLeft())
     }
 

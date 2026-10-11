@@ -52,9 +52,12 @@ class FuzzAndSolverTest {
                         val m = if (useful.isNotEmpty() && rnd.nextInt(3) > 0) useful.first() else g.legalMoves().randomOrNull(rnd) ?: break
                         val next = g.apply(m)
                         assertTrue("legal move applies: $m", next != null)
-                        // Undo restores exactly (except clock-related fields, which don't change here).
+                        // Undo restores the position exactly; the score comes back less the undo cost.
                         val back = next!!.undo()
-                        if (back != null) assertEquals(g.copy(), back.copy(started = g.started))
+                        if (back != null) {
+                            assertEquals(g, back.copy(started = g.started, score = g.score))
+                            assertEquals(Scoring.add(g.score, g.scoring.rules.undoCost()), back.score)
+                        }
                         next
                     }
                 }

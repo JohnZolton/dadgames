@@ -3,7 +3,8 @@ package solitaire.core
 /**
  * Tap-to-move: the best legal destination for the card at [index] in pile [loc] (a run in the tableau
  * moves with every card above it). Foundation first for a top card, then a column that already has
- * cards, then an empty column. Returns null if the card can't go anywhere.
+ * cards, then an empty column. Returns null if the card can't go anywhere. Foundation cards only come
+ * down by dragging.
  */
 fun Klondike.autoMove(loc: Loc, index: Int): Move? {
     if (won) return null
@@ -16,10 +17,8 @@ fun Klondike.autoMove(loc: Loc, index: Int): Move? {
             foundationFor(c)?.let { return Move.Transfer(loc, Loc.foundation(it)) }
             bestColumn(c, exclude = -1, fromBottomOfColumn = false)?.let { Move.Transfer(loc, Loc.tableau(it)) }
         }
-        PileType.FOUNDATION -> {
-            if (pile.isEmpty() || index != pile.lastIndex) return null
-            bestColumn(pile.last(), exclude = -1, fromBottomOfColumn = false)?.let { Move.Transfer(loc, Loc.tableau(it)) }
-        }
+        // Bringing a card down costs 15 points, so it takes a deliberate drag, never a stray tap.
+        PileType.FOUNDATION -> null
         PileType.TABLEAU -> {
             if (!isRun(loc.index, index)) return null
             val c = pile[index]
@@ -46,48 +45,66 @@ data class Hint(val move: Move, val text: String)
 
 /**
  * A move that makes progress, best first: uncover a face-down card, build the foundations, bring a card
- * out of the waste, free a space. Falls back to drawing from the stock if that will eventually help.
+ * out of the waste, free a space. Falls back to drawing from the stock if that will eventually help, and
+ * last of all to bringing a card down from a foundation when that leads to real progress.
  * Null when nothing helps any more ("No moves left").
+ *
+ * Hints never undo the move just made (no sending a card straight back where it came from), so following
+ * them can't go round in circles; `HintBotTest` checks that across thousands of deals.
  */
 fun Klondike.hint(): Hint? {
     if (won) return null
-    usefulMoves().firstOrNull()?.let { return Hint(it, describe(it)) }
+    val last = (history.lastOrNull()?.move as? Move.Transfer)
+    usefulMoves().firstOrNull { !undoes(it, last) }?.let { return Hint(it, describe(it)) }
     if (talonCanHelp()) {
         val text = if (stock.isEmpty()) "Tap the stock to turn the cards back over." else "Tap the stock to draw a card."
         return Hint(Move.Draw, text)
     }
-    foundationDownMove()?.let { return Hint(it, describe(it)) }
+    foundationDownMove(last)?.let { return Hint(it, describe(it)) }
     return null
 }
 
+/** Would [m] put back the card(s) [last] just moved? */
+private fun Klondike.undoes(m: Move, last: Move.Transfer?): Boolean {
+    if (last == null || m !is Move.Transfer) return false
+    if (m.from != last.to || m.count != last.count) return false
+    // Back to the same pile, or a card brought down from a foundation going straight back up.
+    return m.to == last.from || (last.from.type == PileType.FOUNDATION && m.to.type == PileType.FOUNDATION)
+}
+
+/** Face-down cards plus cards still in the stock and waste: goes down only with real progress. */
+private val Klondike.work: Int get() = faceDown.sum() + stock.size + waste.size
+
 /**
- * Last resort: bring a card back down from a foundation when that opens up a real move (for example the
- * Three of Spades onto the Four of Hearts, so the Two of Hearts can go on it and uncover a card).
+ * Last resort: bring a card back down from a foundation, but only if within two more hinted moves that leads
+ * to real progress (a face-down card turned over, or a card out of the stock or waste), for example the Three
+ * of Spades onto the Four of Hearts so the Two of Hearts can go on it and uncover a card. Never suggests
+ * bringing down the card that was just sent up.
  */
-private fun Klondike.foundationDownMove(): Move? {
-    var best: Move? = null
-    var bestRank = 0
+private fun Klondike.foundationDownMove(last: Move.Transfer?): Move? {
+    val before = work
     for (f in 0..3) {
         val c = foundations[f].lastOrNull() ?: continue
+        if (last != null && last.to == Loc.foundation(f)) continue
         for (t in 0..6) {
             if (!tableauAccepts(t, c)) continue
             val m = Move.Transfer(Loc.foundation(f), Loc.tableau(t))
             val next = apply(m) ?: continue
-            // Sending the same card straight back up doesn't count.
-            val follow = next.usefulMoves().filterNot { u ->
-                u is Move.Transfer && u.to.type == PileType.FOUNDATION && next.pile(u.from).lastOrNull() == c
-            }
-            // Best: it lets a face-down card be turned over. Then: any other real move.
-            val rank = when {
-                follow.any { u -> next.apply(u)?.history?.lastOrNull()?.flipped == true } -> 3
-                follow.isNotEmpty() -> 2
-                next.talonCanHelp() -> 1
-                else -> 0
-            }
-            if (rank > bestRank) { best = m; bestRank = rank }
+            if (next.leadsToProgress(before, m, depth = 2)) return m
         }
     }
-    return best
+    return null
+}
+
+private fun Klondike.leadsToProgress(before: Int, last: Move.Transfer, depth: Int): Boolean {
+    if (depth == 0) return false
+    for (u in usefulMoves()) {
+        if (undoes(u, last)) continue
+        val n = apply(u) ?: continue
+        if (n.work < before) return true
+        if (u is Move.Transfer && n.leadsToProgress(before, u, depth - 1)) return true
+    }
+    return false
 }
 
 /** True when no move will ever help again (the player is stuck). */
@@ -130,7 +147,9 @@ private fun Klondike.kingWaiting(except: Int): Boolean {
     for (c in 0..6) {
         if (c == except) continue
         val col = tableau[c]
-        for (i in faceDown[c] until col.size) if (col[i].rank == dadgames.cards.Rank.KING && i > 0) return true
+        // A king that would turn a card over by moving into the space.
+        val d = faceDown[c]
+        if (d > 0 && d < col.size && col[d].rank == dadgames.cards.Rank.KING) return true
     }
     return (stock + waste).any { it.rank == dadgames.cards.Rank.KING }
 }
@@ -161,6 +180,7 @@ fun Klondike.describe(m: Move): String = when (m) {
             PileType.TABLEAU -> tableau[m.to.index].lastOrNull()?.let { "onto the ${it.spoken}" } ?: "into the empty space"
             else -> ""
         }
-        if (m.from.type == PileType.FOUNDATION) "Bring the ${card.spoken} back down $where." else "Move $what $where."
+        if (m.from.type == PileType.FOUNDATION) "Drag the ${card.spoken} back down $where." else "Move $what $where."
     }
+    is Move.Collect -> "Send the ${(if (m.from == PileType.STOCK) stock else waste)[m.index].spoken} up to the foundation."
 }
