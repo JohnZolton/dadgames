@@ -4,7 +4,7 @@ A running list. Every game in this repo follows it; add to it whenever something
 Origin of each rule in brackets.
 
 ## Who it's for
-1. **The player is John's dad** (Galaxy S21 FE, 411 x 891 dp, 480 dpi, 3-button nav bar). He plays for
+1. **The player is John's dad** (Galaxy S21 FE, 360 x 780 dp, 480 dpi, 3-button nav bar). He plays for
    hours a day, keeps hints on, turns sound off, and likes **big cards and big numbers**. Design for that
    screen first; check nothing overlaps or wraps there. [research]
 2. **No ads, no pop-ups, no currency shops, no events, no fake buttons, no "remove ads".** Play money is
@@ -25,7 +25,7 @@ Origin of each rule in brackets.
 9. **Whose turn / what to do next must be unmissable**: solid gold glowing tag, gentle pulse, an
    arrow, and the prompt in larger gold text when it's his move. [Euchre]
 10. **Size things from the real screen width** and leave room for neighbours; when a table element grows,
-   re-check every other element on the 411 dp screen. [Euchre trick cards covered seat tags]
+   re-check every other element on the 360 dp screen. [Euchre trick cards covered seat tags]
 11. Edge-to-edge with `systemBarsPadding()`; keep tappable controls clear of the 3-button nav bar.
 12. Prompts say exactly what to do ("Your turn. Tap or swipe up a card."). Hint button on every game.
 12a. **Size digits and glyphs inside fixed cells in dp derived from the cell size, not sp**, so a large
@@ -33,11 +33,21 @@ Origin of each rule in brackets.
 12b. Put extra detail on a **second line** of a big button (e.g. "Continue / Medium · 4:12") rather than
     appending it to the label. [Sudoku: single-line pill clipped]
 12c. Generated help text (hints, explanations) gets a **test-enforced length limit** that fits its
-    area on the 411 dp screen. [Sudoku]
+    area on the 360 dp screen. [Sudoku]
 12d. Decorative art must obey the game's own rules (no repeated digit in a Sudoku box, no impossible
     card layout); regular players notice instantly. [Sudoku]
 12e. Launcher icon foreground stays inside the central 66 dp safe circle; check it in the app drawer
     with the round mask, not just the vector preview. [Sudoku]
+12f. **Hint text must describe the step the answer actually depends on.** Drop reasoning steps that
+    aren't needed, explain the hardest remaining one, and highlight the cells it talks about. [Sudoku review]
+12g. Check every text area at **system font scale 1.3** (`adb shell settings put system font_scale 1.3`),
+    not just at 1.0 or against a character limit. [Sudoku review]
+12h. Daily/seeded content gets a test pinning a few dates to known output, so engine changes can't
+    silently rewrite past dailies. [Sudoku review]
+12i. Difficulty levels should match what players of the common apps expect from the same names;
+    grade by how much hard reasoning a puzzle needs, not only the hardest single step. [Sudoku review]
+12j. Kill-and-relaunch must restore the **screen** too (in a game → back in that game), not only the data.
+    [Sudoku review]
 
 ## Interaction and animation
 13. **Support both tap and drag/swipe** for moving pieces/cards. [Euchre]
