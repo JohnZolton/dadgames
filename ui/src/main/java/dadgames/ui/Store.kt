@@ -18,8 +18,21 @@ class Store(context: Context, name: String) {
     private val prefs: SharedPreferences = context.getSharedPreferences(name, Context.MODE_PRIVATE)
     private val writer = Dispatchers.Default.limitedParallelism(1)
 
-    fun <T> load(key: String, serializer: KSerializer<T>): T? =
-        runCatching { prefs.getString(key, null)?.let { storeJson.decodeFromString(serializer, it) } }.getOrNull()
+    /**
+     * Returns null if nothing is saved. If something is saved but can't be read (e.g. a future update
+     * changed the format), the raw text is copied to `<key>.unreadable` first so the next save can't
+     * destroy his balance or records. Callers may try to migrate from that backup. [BEST_PRACTICES #20a]
+     */
+    fun <T> load(key: String, serializer: KSerializer<T>): T? {
+        val raw = prefs.getString(key, null) ?: return null
+        return runCatching { storeJson.decodeFromString(serializer, raw) }.getOrElse {
+            if (prefs.getString("$key.unreadable", null) == null) prefs.edit().putString("$key.unreadable", raw).apply()
+            null
+        }
+    }
+
+    /** Raw text of a save that couldn't be read, if any (for migration). */
+    fun unreadable(key: String): String? = prefs.getString("$key.unreadable", null)
 
     /** Save in the background. Pass an immutable snapshot. */
     fun <T> save(scope: CoroutineScope, key: String, serializer: KSerializer<T>, value: T) {
