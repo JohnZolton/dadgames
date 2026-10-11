@@ -239,6 +239,17 @@ class KlondikeTest {
         val stuck = board(cols = cols(col(c(TEN, HEARTS)), col(c(TEN, SPADES))), stock = listOf(c(FOUR, CLUBS), c(FIVE, CLUBS)))
         assertNull(stuck.hint())
         assertTrue(stuck.noMovesLeft())
+        // Only way on: bring the Three of Spades down onto the Four of Hearts so the Two of Hearts can follow
+        // and uncover the card under it. (Seen on the emulator: the app used to say "No moves left" here.)
+        val down = board(
+            cols = cols(col(c(FOUR, HEARTS)), col(c(ACE, HEARTS), c(TWO, HEARTS))),
+            down = listOf(0, 1, 0, 0, 0, 0, 0),
+            found = listOf(listOf(c(ACE, SPADES), c(TWO, SPADES), c(THREE, SPADES)), emptyList(), emptyList(), emptyList()),
+        )
+        val dh = down.hint()!!
+        assertEquals(Move.Transfer(Loc.foundation(0), Loc.tableau(0)), dh.move)
+        assertEquals("Bring the Three of Spades back down onto the Four of Hearts.", dh.text)
+        assertFalse(down.noMovesLeft())
     }
 
     @Test fun jsonRoundTrip() {

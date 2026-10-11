@@ -28,7 +28,14 @@ class DriveScript {
         val tabTop = topY + ch + 14f
         fun colX(i: Int) = pad + i * (cw + gap)
         val g0 = Daily.deal(key).game
-        val sol = Solver().solve(g0)
+        // SOL_DRIVE_POLICY=hint follows the app's hints until they run out (to reach "No moves left").
+        val sol = if (System.getenv("SOL_DRIVE_POLICY") == "hint") {
+            var g = g0
+            val ms = ArrayList<Move>()
+            while (ms.size < 400) { val h = g.hint() ?: break; ms += h.move; g = g.apply(h.move)!! }
+            println("drive: hint policy ${if (g.hint() == null && !g.won) "gets stuck" else "does not get stuck"} after ${ms.size} moves")
+            Solver.Result(Solver.Verdict.WIN, ms, 0)
+        } else Solver().solve(g0)
         check(sol.verdict == Solver.Verdict.WIN)
         fun cardY(g: Klondike, col: Int, index: Int): Float {
             val cards = g.tableau[col]; val down = g.faceDown[col]

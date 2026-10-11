@@ -49,7 +49,7 @@ import dadgames.ui.PrimaryButton
 import dadgames.ui.ScreenScaffold
 import dadgames.ui.Section
 import dadgames.ui.Serif
-import dadgames.ui.StatsHeadline
+import dadgames.ui.Ring
 import dadgames.ui.Tile
 import dadgames.ui.TileRow
 import dadgames.ui.Toggle
@@ -122,7 +122,7 @@ fun SettingsScreen(vm: GameViewModel) {
         Section("Game") {
             Choice(
                 "Draw", listOf("Draw 1" to 1, "Draw 3" to 3), s.draw,
-                detail = "How many cards turn over from the stock. Starts with your next new game.",
+                detail = "Starts with your next game.",
             ) { vm.updateSettings(s.copy(draw = it)) }
             Toggle("Left-handed", "Stock and waste on the left, foundations on the right.", s.leftHanded) { vm.updateSettings(s.copy(leftHanded = it)) }
         }
@@ -202,14 +202,25 @@ fun StatsScreen(vm: GameViewModel) {
     val s = vm.stats
     ScreenScaffold("Statistics", vm::back) {
         Spacer(Modifier.height(8.dp))
-        StatsHeadline(
-            if (s.played == 0) null else s.won / s.played.toFloat(), "${s.winRate}%", "won",
-            "${s.won}" to "games won", "${s.played}" to "games played",
-        )
+        // Local headline: numbers with their labels underneath, which fits 360 dp at any font size.
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(P.wash).padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Ring(if (s.played == 0) null else s.won / s.played.toFloat(), "${s.winRate}%", "won", size = 116.dp)
+            Spacer(Modifier.width(20.dp))
+            Column {
+                Text("${s.won}", color = P.text, fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = Serif, maxLines = 1)
+                Text("games won", color = P.textDim, fontSize = 16.sp, maxLines = 1)
+                Spacer(Modifier.height(10.dp))
+                Text("${s.played}", color = P.text, fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = Serif, maxLines = 1)
+                Text("games played", color = P.textDim, fontSize = 16.sp, maxLines = 1)
+            }
+        }
         Spacer(Modifier.height(10.dp))
         TileRow(Tile(if (s.bestScore == 0) "–" else "${s.bestScore}", "best score"), Tile(if (s.leastMoves == 0) "–" else "${s.leastMoves}", "least moves"))
         TileRow(Tile(if (s.bestTime == 0L) "–" else clock(s.bestTime), "best time"), Tile("${s.streak}", if (s.streak == 1) "win in a row" else "wins in a row", highlight = s.streak >= 3))
-        TileRow(Tile("${s.bestStreak}", "best streak"), Tile("${vm.daily.solved.size}", "daily challenges"))
+        TileRow(Tile("${s.bestStreak}", "best streak"), Tile("${vm.daily.solved.size}", "dailies solved"))
         Row(
             Modifier.fillMaxWidth().padding(vertical = 5.dp).clip(RoundedCornerShape(18.dp)).background(P.wash).padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -226,7 +237,7 @@ fun StatsScreen(vm: GameViewModel) {
         }
 
         if (s.recent.isNotEmpty()) Section("Recent games") {
-            val fmt = java.text.SimpleDateFormat("MMM d, h:mm a", Locale.US)
+            val fmt = java.text.SimpleDateFormat("MMM d", Locale.US)
             for (r in s.recent) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.size(34.dp).clip(CircleShape).background(if (r.won) P.accent else P.text.copy(alpha = 0.2f)),
@@ -235,10 +246,10 @@ fun StatsScreen(vm: GameViewModel) {
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        (if (r.won) "${r.score} points" else "Gave up") + " · ${clock(r.seconds)} · ${r.moves} moves",
-                        color = P.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                        (if (r.won) "Won · ${r.score} points" else "Gave up") + if (r.daily) " · daily" else "",
+                        color = P.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
                     )
-                    Text(fmt.format(java.util.Date(r.epochMs)) + if (r.daily) " · daily" else "", color = P.textDim, fontSize = 14.sp)
+                    Text("${clock(r.seconds)} · ${r.moves} moves · ${fmt.format(java.util.Date(r.epochMs))}", color = P.textDim, fontSize = 14.sp)
                 }
             }
         }
@@ -383,7 +394,7 @@ fun DailyScreen(vm: GameViewModel) {
                 )
             }
             PrimaryButton(
-                when { inProgress -> "Continue"; selDone -> "Play again"; else -> "Play" },
+                when { vm.preparing != null -> "Dealing…"; inProgress -> "Continue"; selDone -> "Play again"; else -> "Play" },
                 enabled = vm.preparing == null,
             ) { vm.playDaily(selKey) }
         }

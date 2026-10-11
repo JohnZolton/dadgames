@@ -56,7 +56,38 @@ fun Klondike.hint(): Hint? {
         val text = if (stock.isEmpty()) "Tap the stock to turn the cards back over." else "Tap the stock to draw a card."
         return Hint(Move.Draw, text)
     }
+    foundationDownMove()?.let { return Hint(it, describe(it)) }
     return null
+}
+
+/**
+ * Last resort: bring a card back down from a foundation when that opens up a real move (for example the
+ * Three of Spades onto the Four of Hearts, so the Two of Hearts can go on it and uncover a card).
+ */
+private fun Klondike.foundationDownMove(): Move? {
+    var best: Move? = null
+    var bestRank = 0
+    for (f in 0..3) {
+        val c = foundations[f].lastOrNull() ?: continue
+        for (t in 0..6) {
+            if (!tableauAccepts(t, c)) continue
+            val m = Move.Transfer(Loc.foundation(f), Loc.tableau(t))
+            val next = apply(m) ?: continue
+            // Sending the same card straight back up doesn't count.
+            val follow = next.usefulMoves().filterNot { u ->
+                u is Move.Transfer && u.to.type == PileType.FOUNDATION && next.pile(u.from).lastOrNull() == c
+            }
+            // Best: it lets a face-down card be turned over. Then: any other real move.
+            val rank = when {
+                follow.any { u -> next.apply(u)?.history?.lastOrNull()?.flipped == true } -> 3
+                follow.isNotEmpty() -> 2
+                next.talonCanHelp() -> 1
+                else -> 0
+            }
+            if (rank > bestRank) { best = m; bestRank = rank }
+        }
+    }
+    return best
 }
 
 /** True when no move will ever help again (the player is stuck). */
@@ -130,6 +161,6 @@ fun Klondike.describe(m: Move): String = when (m) {
             PileType.TABLEAU -> tableau[m.to.index].lastOrNull()?.let { "onto the ${it.spoken}" } ?: "into the empty space"
             else -> ""
         }
-        "Move $what $where."
+        if (m.from.type == PileType.FOUNDATION) "Bring the ${card.spoken} back down $where." else "Move $what $where."
     }
 }
