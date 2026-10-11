@@ -57,6 +57,12 @@ Origin of each rule in brackets.
     [Blackjack]
 12o. Debug-only intent hooks (stack the deck, set the balance, jump to a state) make screenshots of
     rare states quick; release builds must ignore them. [Blackjack]
+12p. Show records being broken as **persistent** text for the rest of the game ("New best today!"), not
+    only a timed banner that's easy to miss. [Blocks]
+12q. Gesture callbacks must read the **latest** game state (keep them in a remembered holder updated each
+    composition); a `pointerInput` keyed only on the piece kept validating against a stale board. [Blocks]
+12r. Expose hint targets and key state to accessibility (content descriptions like "hint at row 3,
+    column 5"); helps TalkBack and makes scripted end-to-end tests easy. [Blocks]
 
 ## Interaction and animation
 13. **Support both tap and drag/swipe** for moving pieces/cards. [Euchre]
