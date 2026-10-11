@@ -16,7 +16,7 @@ case "$1" in
       [ "$($ADB -s $SER shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] && break; sleep 2
     done
     $ADB -s $SER shell wm size 1080x2340; $ADB -s $SER shell wm density 480
-    $ADB -s $SER shell settings put secure navigation_mode 0 >/dev/null 2>&1 || true   # 3-button nav like dad's phone
+    $ADB -s $SER shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.threebutton >/dev/null 2>&1 || true   # 3-button nav like dad's phone
     echo $SER ;;
   down) $ADB -s emulator-$2 emu kill ;;
   shot) $ADB -s emulator-$2 exec-out screencap -p > "$3"; echo "$3" ;;
