@@ -119,8 +119,8 @@ That is roughly one level per evening at his pace, so the badge keeps moving wit
     - **Same cards, different rules (5M hands):** S17 0.430%, H17 0.667%, no DAS 0.620%.
 - **Release build** (R8 + shrinkResources) installed on the `dad-blackjack` emulator (1080x2340 @ 480 dpi =
   360 x 780 dp, 3-button nav). Every screen was screenshotted into `shots/` and checked for overlap, wrapping,
-  clipping and off-centre glyphs: home, betting, dealing, your turn, hint, result, pair, three split hands with
-  auto-highlighted hint, split result, insurance prompt, insured, surrender option, auto-deal, shuffling,
+  clipping and off-centre glyphs: home, betting, dealing, your turn, hint, result, soft hand, four split hands with
+  auto-highlighted hint, split result, insurance prompt, insured (even money and break even), surrender option, auto-deal, shuffling,
   out of chips, not enough for this table, tables (Dubai), 7-card hand, hold-to-auto ring, settings, stats, help.
 - **Animations** checked from `screenrecord` contact sheets: deal path from the shoe, flips, totals appearing
   when cards land, chips to the dealer and the balance, the sweep to the discard tray, and split stacks.
