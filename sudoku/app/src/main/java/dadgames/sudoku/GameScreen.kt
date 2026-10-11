@@ -32,6 +32,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,9 +63,13 @@ import dadgames.ui.centeredGlyph
 import dadgames.ui.menuBackground
 import java.time.LocalDate
 
-/** Soft gold for the square a hint just filled and the area it talks about. */
-private val hintGold = Color(0xFFFFE08A)
-private val hintWash = Color(0xFFFFF1C7)
+/** Gold for the square a hint fills, the pattern its reason talks about, and that reason's area. */
+private val hintGold = Color(0xFFFFD45C)
+private val hintPattern = Color(0xFFFFE49A)
+private val hintWash = Color(0xFFFFF3D2)
+
+/** His numbers: a deeper blue than the accent so they read at 4.5:1 or better even on the picked square. */
+private val hisInk = Color(0xFF1A4CA6)
 
 @Composable
 fun GameScreen(vm: GameViewModel) {
@@ -147,7 +155,7 @@ private fun BoardView(g: GameState, vm: GameViewModel, modifier: Modifier = Modi
         val density = LocalDensity.current
         // Sized from the cell, not the font scale, so big digits always fit their squares. [BEST_PRACTICES #10]
         val digitSp = with(density) { (cell * 0.66f).toSp() }
-        val noteSp = with(density) { (cell * 0.30f).toSp() }
+        val noteSp = with(density) { (cell * 0.32f).toSp() }
         Column(Modifier.fillMaxSize()) {
             for (r in 0 until 9) Row(Modifier.weight(1f).fillMaxWidth()) {
                 for (c in 0 until 9) {
@@ -156,12 +164,12 @@ private fun BoardView(g: GameState, vm: GameViewModel, modifier: Modifier = Modi
                     val wrong = showWrong && g.isWrong(i)
                     val bg = when {
                         hint?.cell == i -> hintGold
-                        i == sel -> accent.copy(alpha = 0.34f)
+                        i == sel -> accent.copy(alpha = 0.30f)
                         wrong || i in conflicts -> red.copy(alpha = 0.15f)
-                        s.highlightSame && selVal != null && v == selVal -> accent.copy(alpha = 0.22f)
-                        i in pattern -> hintWash
+                        i in pattern -> hintPattern
+                        s.highlightSame && selVal != null && v == selVal -> accent.copy(alpha = 0.20f)
                         i in focus -> hintWash
-                        s.highlightAreas && sel != null && Board.sees(i, sel) -> accent.copy(alpha = 0.09f)
+                        s.highlightAreas && sel != null && Board.sees(i, sel) -> accent.copy(alpha = 0.16f)
                         else -> Color.Transparent
                     }
                     val animBg by animateColorAsState(bg, tween(140), label = "cell")
@@ -174,7 +182,7 @@ private fun BoardView(g: GameState, vm: GameViewModel, modifier: Modifier = Modi
                             Text(
                                 "$v", fontSize = digitSp, style = centeredGlyph,
                                 fontWeight = if (g.isGiven(i)) FontWeight.Bold else FontWeight.Medium,
-                                color = when { g.isGiven(i) -> P.text; wrong -> red; else -> accent },
+                                color = when { g.isGiven(i) -> P.text; wrong -> red; else -> hisInk },
                             )
                         } else if (g.notes[i] != 0) {
                             Notes(g.notes[i], selVal, noteSp)
@@ -211,7 +219,7 @@ private fun Notes(mask: Int, highlight: Int?, size: androidx.compose.ui.unit.Tex
                         val hi = d == highlight
                         Text(
                             "$d", fontSize = size, style = centeredGlyph,
-                            color = if (hi) P.accent else P.textDim, fontWeight = if (hi) FontWeight.Bold else FontWeight.Medium,
+                            color = if (hi) hisInk else P.text.copy(alpha = 0.78f), fontWeight = if (hi) FontWeight.Bold else FontWeight.Medium,
                         )
                     }
                 }
@@ -231,13 +239,22 @@ private fun MessageLine(g: GameState, vm: GameViewModel, modifier: Modifier) {
         vm.notesMode -> "Notes on: tap numbers to pencil them in."
         else -> ""
     }
-    Box(modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
-        Text(
-            prompt, textAlign = TextAlign.Center,
-            fontSize = if (prompt.length > 110) 16.sp else 17.sp, lineHeight = if (prompt.length > 110) 21.sp else 23.sp,
-            color = when { m?.warn == true -> P.red; m != null -> P.text; else -> P.textDim },
-            fontWeight = if (m != null) FontWeight.Medium else FontWeight.Normal,
-        )
+    // Fit the text to its box: start at 17sp (font scale capped at 1.15) and shrink until nothing is cut off,
+    // so the answer at the end of a long hint is never lost. [BEST_PRACTICES 12g]
+    val density = LocalDensity.current
+    val capped = remember(density) { androidx.compose.ui.unit.Density(density.density, minOf(density.fontScale, 1.15f)) }
+    var size by remember(prompt) { mutableFloatStateOf(17f) }
+    var ready by remember(prompt) { mutableStateOf(false) }
+    androidx.compose.runtime.CompositionLocalProvider(LocalDensity provides capped) {
+        Box(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), contentAlignment = Alignment.Center) {
+            Text(
+                prompt, textAlign = TextAlign.Center, fontSize = size.sp, lineHeight = (size * 1.3f).sp,
+                color = when { m?.warn == true -> P.red; m != null -> P.text; else -> P.textDim },
+                fontWeight = if (m != null) FontWeight.Medium else FontWeight.Normal,
+                modifier = Modifier.drawWithContent { if (ready) drawContent() },
+                onTextLayout = { r -> if (r.didOverflowHeight && size > 11f) size -= 1f else ready = true },
+            )
+        }
     }
 }
 

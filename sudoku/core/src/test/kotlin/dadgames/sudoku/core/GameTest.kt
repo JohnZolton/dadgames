@@ -61,6 +61,19 @@ class GameTest {
         assertEquals(0, sc.values[empties[5]])
     }
 
+    @Test fun takeItBackClearsEarlierWrongNumberInThatSquare() {
+        val c = empties[0]
+        val wrongs = (1..9).filter { it != sol[c] }.take(3)
+        var g = game().toggleNote(c, 4).game
+        for (w in wrongs) g = g.enter(c, w, on).game // three mistakes in the same square
+        assertEquals(Status.OUT_OF_MISTAKES, g.status)
+        val sc = g.secondChance()
+        assertEquals("square is back to before the mistakes", 0, sc.values[c])
+        assertEquals(Board.bit(4), sc.notes[c])
+        assertEquals(2, sc.mistakes)
+        assertEquals(Status.PLAYING, sc.status)
+    }
+
     @Test fun noLimitWhenTurnedOff() {
         var g = game()
         val o = on.copy(mistakeLimit = false)
@@ -210,31 +223,81 @@ class GameTest {
     }
 
     @Test fun hintReasonsArePlainEnglish() {
-        val single = Step(Technique.HIDDEN_SINGLE, 5, 4, unit = 0)
-        assertEquals("This is the only place for 4 in this row.", Hints.placementText(single))
-        val naked = Step(Technique.NAKED_SINGLE, 5, 4)
-        assertTrue(Hints.placementText(naked).startsWith("Only 4 fits here."))
-        val pair = Step(Technique.NAKED_PAIR, eliminations = listOf(3 to 7), unit = 18, cells = listOf(0, 1), digits = listOf(3, 7))
-        assertEquals("Two squares in a box can only hold 3 or 7, so no other square in that box can.", Hints.eliminationText(pair))
-        assertTrue(Hints.explain(single, listOf(pair)).endsWith("Then: this is the only place for 4 in this row."))
-        for (t in Technique.entries) if (t.level > 0) {
-            val s = Step(t, eliminations = listOf(0 to 1), unit = 9, cells = listOf(0, 9, 18), digits = listOf(1, 2, 3))
-            assertTrue("$t has text", Hints.eliminationText(s).length > 20)
-        }
+        val single = Step(Technique.HIDDEN_SINGLE, 5, 4, unit = 2)
+        assertEquals("This is the only place for 4 in row 3.", Hints.placementText(single))
+        assertEquals("This is the only place for 4 in the top-left box.", Hints.placementText(Step(Technique.HIDDEN_SINGLE, 5, 4, unit = 18)))
+        assertEquals("This is the only place for 4 in column 9.", Hints.placementText(Step(Technique.HIDDEN_SINGLE, 5, 4, unit = 17)))
+        assertTrue(Hints.placementText(Step(Technique.NAKED_SINGLE, 5, 4)).startsWith("Only 4 fits here"))
+        val pair = Step(Technique.NAKED_PAIR, eliminations = listOf(3 to 7), unit = 22, cells = listOf(30, 31), digits = listOf(3, 7))
+        assertEquals("Two shaded squares in the centre box can only hold 3 or 7, so the rest of it can't.", Hints.eliminationText(pair))
+        val pointing = Step(Technique.POINTING, eliminations = listOf(5 to 8), unit = 18, cells = listOf(0, 1), digits = listOf(8), lines = listOf(0))
+        assertEquals("In the top-left box, the 8 must go in row 1, so the rest of row 1 can't be 8.", Hints.eliminationText(pointing))
+        val xwing = Step(Technique.X_WING, eliminations = listOf(5 to 8), cells = listOf(10, 16, 46, 52), digits = listOf(8), lines = listOf(1, 5))
+        assertEquals("In rows 2 and 6, the 8 must go in columns 2 and 8, so the rest of those can't be 8.", Hints.eliminationText(xwing))
+        assertEquals("${Hints.eliminationText(pair)} So this is the only place for 4 in row 3.", Hints.explain(single, listOf(pair)))
+        assertTrue(Hints.explain(single, listOf(pointing, pair)).contains("With one more step, this is the only place"))
+        // The hardest step is the one explained.
+        assertTrue(Hints.explain(single, listOf(pair, xwing, pointing)).startsWith("In rows 2 and 6"))
     }
 
-    /** The message area under the board fits about 200 characters at 16sp on his 411 dp screen. */
+    /** The message area under the board fits about 170 characters at 16sp on his 360 dp screen (and shrinks to fit beyond that). */
     @Test fun hintReasonsFitTheMessageArea() {
+        // Worst cases: longest unit names (bottom-middle box, column 9) and the most digits.
+        val bm = 25
+        val steps = listOf(
+            Step(Technique.POINTING, unit = bm, cells = listOf(66, 67), digits = listOf(9), lines = listOf(17)),
+            Step(Technique.BOX_LINE, unit = 17, cells = listOf(62, 71), digits = listOf(9), lines = listOf(26)),
+            Step(Technique.NAKED_PAIR, unit = bm, cells = listOf(66, 67), digits = listOf(8, 9)),
+            Step(Technique.NAKED_TRIPLE, unit = bm, cells = listOf(66, 67, 68), digits = listOf(7, 8, 9)),
+            Step(Technique.NAKED_QUAD, unit = bm, cells = listOf(66, 67, 68, 75), digits = listOf(6, 7, 8, 9)),
+            Step(Technique.HIDDEN_PAIR, unit = bm, cells = listOf(66, 67), digits = listOf(8, 9)),
+            Step(Technique.HIDDEN_TRIPLE, unit = bm, cells = listOf(66, 67, 68), digits = listOf(7, 8, 9)),
+            Step(Technique.X_WING, cells = listOf(15, 17, 69, 71), digits = listOf(9), lines = listOf(1, 7)),
+            Step(Technique.SWORDFISH, cells = listOf(15, 17, 42, 44, 69, 71), digits = listOf(9), lines = listOf(1, 4, 7)),
+            Step(Technique.XY_WING, cells = listOf(0, 1, 9), digits = listOf(9)),
+            Step(Technique.XYZ_WING, cells = listOf(0, 1, 9), digits = listOf(9)),
+            Step(Technique.COLORING, cells = listOf(0, 1, 9, 10), digits = listOf(9)),
+            Step(Technique.XY_CHAIN, cells = listOf(0, 1, 9), digits = listOf(9)),
+        )
+        val places = listOf(Step(Technique.HIDDEN_SINGLE, 70, 9, unit = bm), Step(Technique.NAKED_SINGLE, 70, 9))
         var longest = ""
-        for (t in Technique.entries) if (t.level > 0) for (place in listOf(Step(Technique.HIDDEN_SINGLE, 0, 4, unit = 9), Step(Technique.NAKED_SINGLE, 0, 4))) {
-            for (n in 1..2) {
-                val elim = Step(t, eliminations = listOf(0 to 1), unit = 9, cells = listOf(0, 9, 18, 27), digits = listOf(1, 2, 3, 4))
-                val s = Hints.explain(place, List(n) { elim })
-                if (s.length > longest.length) longest = s
-            }
+        for (st in steps) for (pl in places) for (n in 1..3) {
+            val s = Hints.explain(pl, List(n) { st })
+            if (s.length > longest.length) longest = s
         }
         println("longest hint (${longest.length}): $longest")
-        assertTrue(longest.length <= 200)
+        assertTrue(longest.length <= 175)
+    }
+
+    /** 12f: every step a hint explains is needed for its answer, and the answer follows from them. */
+    @Test fun hintStepsAreAllNeeded() {
+        var multi = 0
+        var withSteps = 0
+        for (p in Fixtures.corpus.values.flatten()) {
+            var g = GameState(p)
+            while (g.status == Status.PLAYING) {
+                val r = g.hint(null, on)
+                val h = r.hint!!
+                val base = Board.candidates(g.values.toIntArray())
+                if (h.target != null) {
+                    assertTrue("answer follows", Hints.follows(h.steps, h.target!!, base))
+                    for (i in h.steps.indices) {
+                        assertFalse("step $i (${h.steps[i].technique}) not needed", Hints.follows(h.steps.filterIndexed { j, _ -> j != i }, h.target!!, base))
+                    }
+                    if (h.steps.isNotEmpty()) {
+                        withSteps++
+                        val hardest = h.steps.maxOf { it.technique.level }
+                        val key = h.steps.last { it.technique.level == hardest }
+                        assertTrue(h.reason.startsWith(Hints.eliminationText(key)))
+                        assertEquals(key.cells, h.pattern)
+                    }
+                    if (h.steps.size > 1) multi++
+                }
+                g = r.game
+            }
+        }
+        println("hints with reasoning steps: $withSteps, with more than one: $multi")
+        assertTrue(withSteps > 50)
     }
 
     @Test fun jsonRoundTripKeepsEverything() {

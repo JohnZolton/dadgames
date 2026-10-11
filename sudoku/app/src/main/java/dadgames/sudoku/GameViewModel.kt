@@ -89,10 +89,17 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     /** Day picked on the calendar. */
     var dailyDay by mutableStateOf(LocalDate.now())
 
-    private var screenState by mutableStateOf(Screen.HOME)
+    /** Killed mid-game: open straight back into the game. [BEST_PRACTICES 12j] */
+    private var screenState by mutableStateOf(
+        if (store.getBoolean("inGame", false) && loaded?.game?.status == Status.PLAYING) Screen.GAME else Screen.HOME
+    )
     var screen: Screen
         get() = screenState
-        set(v) { screenState = v; syncClock() }
+        set(v) {
+            screenState = v
+            store.putBoolean("inGame", v == Screen.GAME)
+            syncClock()
+        }
 
     val canResume get() = game.let { it != null && it.status != Status.WON }
 
@@ -105,16 +112,20 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     private var ticker: Job? = null
     private var foreground = true
 
+    /** Wall-clock time, for dates in stats. */
     private fun now() = System.currentTimeMillis()
 
-    private fun elapsed(): Long = (game?.elapsedMs ?: 0) + (runStart?.let { now() - it } ?: 0)
+    /** Monotonic time for the game clock: changing the phone's time can't bend it. */
+    private fun tick() = android.os.SystemClock.elapsedRealtime()
+
+    private fun elapsed(): Long = (game?.elapsedMs ?: 0) + (runStart?.let { tick() - it } ?: 0)
 
     /** Start or stop the clock to match what's on screen. It only runs while he can see the board. */
     private fun syncClock() {
         val g = game
         val run = foreground && screenState == Screen.GAME && !paused && busy == null && g != null && g.status == Status.PLAYING
         if (run && runStart == null) {
-            runStart = now()
+            runStart = tick()
             ticker?.cancel()
             ticker = viewModelScope.launch {
                 while (isActive) { clockMs = elapsed(); delay(250) }
@@ -131,7 +142,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     /** Fold the running clock into the game before a move, so the saved time is exact. */
     private fun foldClock() {
         if (runStart != null) {
-            val t = now()
+            val t = tick()
             game = game?.withTime(elapsed())
             runStart = t
         }
@@ -166,12 +177,13 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         store.save(viewModelScope, "stats", Stats.serializer(), s)
     }
 
-    fun resetStats() = saveStats(Stats())
+    /** A game under way stays counted as started, so finishing it can't show "1 win of 0". */
+    fun resetStats() = saveStats(Stats.reset(game))
 
     // ------------------------------------------------------------ puzzle supply
 
     /** A few ready-made puzzles per level, made in the background so New game is instant. */
-    private val pool = (store.load("pool", ListSerializer(String.serializer())) ?: emptyList()).mapNotNull { Puzzle.decode(it) }.toMutableList()
+    private val pool = (store.load(POOL_KEY, ListSerializer(String.serializer())) ?: emptyList()).mapNotNull { Puzzle.decode(it) }.toMutableList()
     private var refill: Job? = null
 
     private fun refillPool() {
@@ -181,13 +193,31 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                 val need = Difficulty.entries.firstOrNull { d -> pool.count { it.difficulty == d } < POOL_SIZE } ?: break
                 val p = withContext(Dispatchers.Default) { Generator.generate(need, Random.Default) }
                 pool += p
-                store.save(viewModelScope, "pool", ListSerializer(String.serializer()), pool.map { it.encode() })
+                store.save(viewModelScope, POOL_KEY, ListSerializer(String.serializer()), pool.map { it.encode() })
             }
         }
     }
 
+    /** Daily puzzles made so far (date to encoded puzzle), so opening a day doesn't flash a wait panel. */
+    private val dailyCache = HashMap<String, Puzzle>()
+
+    private suspend fun dailyPuzzle(day: LocalDate): Puzzle {
+        val key = day.toString()
+        dailyCache[key]?.let { return it }
+        val p = withContext(Dispatchers.Default) { Generator.daily(key, day.dayOfWeek.value) }
+        dailyCache[key] = p
+        return p
+    }
+
     init {
         refillPool()
+        viewModelScope.launch { dailyPuzzle(LocalDate.now()) }
+    }
+
+    /** Show the "One moment" panel only if making the puzzle takes a noticeable time. */
+    private fun busyAfterDelay(text: String): Job = viewModelScope.launch {
+        delay(400)
+        busy = text
     }
 
     // ------------------------------------------------------------ starting and leaving
@@ -214,41 +244,46 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         screen = Screen.GAME
     }
 
+    private var generating = false
+
     fun newGame(d: Difficulty) {
-        if (busy != null) return
+        if (busy != null || generating) return
         abandonCurrent()
         game = null
         updateSettings(settings.copy(lastDifficulty = d))
         val ready = pool.firstOrNull { it.difficulty == d }
         if (ready != null) {
             pool.remove(ready)
-            store.save(viewModelScope, "pool", ListSerializer(String.serializer()), pool.map { it.encode() })
+            store.save(viewModelScope, POOL_KEY, ListSerializer(String.serializer()), pool.map { it.encode() })
             begin(GameState(ready))
             refillPool()
             return
         }
-        busy = "Making a ${d.label.lowercase()} puzzle…"
         choosingDifficulty = false
+        val wait = busyAfterDelay("Making a ${d.label.lowercase()} puzzle…")
+        generating = true
         viewModelScope.launch {
             val p = withContext(Dispatchers.Default) { Generator.generate(d, Random.Default) }
-            busy = null
+            wait.cancel(); busy = null; generating = false
             begin(GameState(p))
             refillPool()
         }
     }
 
     fun playDaily(day: LocalDate) {
-        if (busy != null) return
+        if (busy != null || generating) return
         val key = day.toString()
         val g = game
         if (g != null && g.daily == key && g.status != Status.WON) { resume(); return }
         abandonCurrent()
         game = null
-        busy = "Getting the puzzle for ${day.monthName()} ${day.dayOfMonth}…"
+        val replay = key in stats.dailyDone
+        val wait = busyAfterDelay("Getting the puzzle for ${day.monthName()} ${day.dayOfMonth}…")
+        generating = true
         viewModelScope.launch {
-            val p = withContext(Dispatchers.Default) { Generator.daily(key, day.dayOfWeek.value) }
-            busy = null
-            begin(GameState(p, daily = key))
+            val p = dailyPuzzle(day)
+            wait.cancel(); busy = null; generating = false
+            begin(GameState(p, daily = key, replay = replay))
         }
     }
 
@@ -341,7 +376,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         val before = game ?: return
         foldClock()
         val g = r.game.withTime(game!!.elapsedMs)
-        if (before.moves == 0 && g.moves > 0) saveStats(stats.started(g.difficulty))
+        if (before.moves == 0 && g.moves > 0 && !g.replay) saveStats(stats.started(g.difficulty))
         game = g
         hint = r.hint
         r.hint?.let { selected = it.cell }
@@ -379,7 +414,11 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         sound.release()
     }
 
-    companion object { const val POOL_SIZE = 2 }
+    companion object {
+        const val POOL_SIZE = 2
+        /** Bump when grading changes, so puzzles made under old levels are dropped. */
+        const val POOL_KEY = "pool-v2"
+    }
 }
 
 fun LocalDate.monthName(): String = month.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())

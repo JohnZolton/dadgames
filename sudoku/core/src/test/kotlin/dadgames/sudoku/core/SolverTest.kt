@@ -67,8 +67,8 @@ class SolverTest {
         val rnd = Random(77)
         val puzzles = Fixtures.corpus.values.flatten().toMutableList()
         // Plus minimal puzzles, which need the harder techniques more often.
-        repeat(150) { puzzles += Generator.attempt(Difficulty.EXPERT, rnd) ?: return@repeat }
-        repeat(150) { Generator.attempt(Difficulty.HARD, rnd)?.let { puzzles += it } }
+        repeat(1500) { Generator.attempt(Difficulty.EXPERT, rnd)?.let { puzzles += it } }
+        repeat(600) { Generator.attempt(Difficulty.HARD, rnd)?.let { puzzles += it } }
         for (p in puzzles) {
             val s = LogicSolver(p.givens.toIntArray())
             var steps = 0

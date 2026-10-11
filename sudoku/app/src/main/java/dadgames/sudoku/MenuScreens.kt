@@ -106,6 +106,31 @@ fun HomeScreen(vm: GameViewModel) {
     }
 }
 
+/**
+ * Like the shared ResultPanel, but its content scrolls, so at a large system font size the last
+ * choices and Cancel stay reachable. [BEST_PRACTICES 12g]
+ */
+@Composable
+private fun ScrollPanel(title: String, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    Box(
+        Modifier.fillMaxSize().background(Color(0x99000000))
+            .clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, null) {}
+            .systemBarsPadding(),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.material3.Surface(
+            shape = RoundedCornerShape(28.dp), color = P.panel,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp).widthIn(max = 420.dp).border(1.dp, P.panelLine, RoundedCornerShape(28.dp)),
+        ) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(title, style = MaterialTheme.typography.headlineSmall, color = P.accent, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(10.dp))
+                content()
+            }
+        }
+    }
+}
+
 /** Big primary pill with the game in progress on a second line, so long titles never clip. */
 @Composable
 private fun ContinueButton(detail: String, onClick: () -> Unit) {
@@ -147,7 +172,7 @@ private fun Logo() {
 
 @Composable
 private fun DifficultyPanel(vm: GameViewModel) {
-    ResultPanel("New game") {
+    ScrollPanel("New game") {
         val g = vm.game
         if (vm.canResume && g != null && g.moves > 0) {
             Text("Your game in progress will end.", color = P.textDim, fontSize = 15.sp, textAlign = TextAlign.Center)
@@ -274,9 +299,12 @@ fun StatsScreen(vm: GameViewModel) {
     val ls = s.of(level)
     ScreenScaffold("Your stats", { vm.screen = Screen.HOME }) {
         Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)) {
-            for (d in Difficulty.entries) Chip(d.label, d == level) { level = d }
-        }
+        TileRow(
+            Tile("${s.totalWins}", if (s.totalWins == 1) "puzzle solved" else "puzzles solved"),
+            Tile("${s.dailyDone.size}", if (s.dailyDone.size == 1) "daily done" else "dailies done"),
+        )
+        Spacer(Modifier.height(12.dp))
+        LevelTabs(level) { level = it }
         Spacer(Modifier.height(14.dp))
         StatsHeadline(
             if (ls.games == 0) null else ls.wins.toFloat() / ls.games,
@@ -287,11 +315,14 @@ fun StatsScreen(vm: GameViewModel) {
         Spacer(Modifier.height(14.dp))
         TileRow(Tile(if (ls.wins == 0) "–" else formatTime(ls.bestMs), "best time", highlight = ls.wins > 0), Tile(if (ls.wins == 0) "–" else formatTime(ls.averageMs), "average time"))
         TileRow(Tile("${ls.streak}", if (ls.streak == 1) "win in a row" else "wins in a row"), Tile("${ls.bestStreak}", "best streak"))
-        TileRow(Tile("${ls.perfectWins}", "perfect games"), Tile("${s.dailyDone.size}", if (s.dailyDone.size == 1) "daily done" else "dailies done"))
+        TileRow(
+            Tile("${ls.perfectWins}", if (ls.perfectWins == 1) "perfect game" else "perfect games"),
+            Tile("${ls.hintsUsed}", if (ls.hintsUsed == 1) "hint used" else "hints used"),
+        )
 
         if (s.recent.isNotEmpty()) {
             Section("Recent games") {
-                val fmt = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault())
+                val fmt = java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault())
                 for (r in s.recent) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(
@@ -308,7 +339,7 @@ fun StatsScreen(vm: GameViewModel) {
                                 color = P.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
                             )
                             Text(
-                                fmt.format(java.util.Date(r.time)) + if (r.won) " · ${r.mistakes} mistakes" else " · not finished",
+                                fmt.format(java.util.Date(r.time)) + if (r.won) " · ${plural(r.mistakes, "mistake")} · ${plural(r.hints, "hint")}" else " · not finished",
                                 color = P.textDim, fontSize = 14.sp, maxLines = 1,
                             )
                         }
@@ -319,6 +350,26 @@ fun StatsScreen(vm: GameViewModel) {
         Spacer(Modifier.height(24.dp))
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             ConfirmTextButton("Reset stats", "Tap again to erase all stats") { vm.resetStats() }
+        }
+    }
+}
+
+/** Four equal tabs that always fit the 360 dp screen: font scale capped at 1.1 here. [BEST_PRACTICES 12g] */
+@Composable
+private fun LevelTabs(level: Difficulty, onPick: (Difficulty) -> Unit) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val capped = androidx.compose.ui.unit.Density(density.density, minOf(density.fontScale, 1.1f))
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides capped) {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(P.text.copy(alpha = 0.10f)).padding(4.dp)) {
+            for (d in Difficulty.entries) {
+                val on = d == level
+                Box(
+                    Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(50)).background(if (on) P.accent else Color.Transparent).clickable { onPick(d) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(d.label, color = if (on) P.onAccent else P.text, fontSize = 16.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, maxLines = 1, softWrap = false)
+                }
+            }
         }
     }
 }
@@ -360,7 +411,7 @@ fun HelpScreen(vm: GameViewModel) {
             "Notes" to "Turn on Notes to pencil small numbers into a square while you work it out. Tap a number again to rub it out. With auto-remove on, placing a number clears it from the notes nearby.",
             "Mistakes" to "With Show mistakes on, a wrong number turns red and counts as a mistake. After three, you can take it back and carry on, or start a new puzzle. You can change this in Settings.",
             "Undo, Erase and Hint" to "Undo takes back your last step. Erase clears the square you picked. Hint fills in one square and says why it has to be that number.",
-            "Difficulty" to "Easy puzzles only need you to spot the one place a number can go. Medium needs pairs, Hard needs patterns like X-wings, and Expert needs longer chains of reasoning. Every puzzle has exactly one answer.",
+            "Difficulty" to "Easy puzzles only need you to spot the one place a number can go. Medium now and then needs a pair or a pointing number, Hard needs plenty of those plus triples and X-wings, and Expert needs wings and chains. Every puzzle has exactly one answer.",
             "Daily challenge" to "A new puzzle each day. Finished days get a blue circle on the calendar, and you can go back and play days you missed.",
             "Pause" to "Pause stops the clock and hides the board. The game is saved after every move, so you can close the app any time and pick up where you left off.",
         )
@@ -383,3 +434,5 @@ fun BusyOverlay(text: String) {
         androidx.compose.material3.CircularProgressIndicator(color = P.accent)
     }
 }
+
+fun plural(n: Int, word: String) = "$n $word" + if (n == 1) "" else "s"

@@ -1,8 +1,8 @@
 package dadgames.sudoku.core
 
 /**
- * A hint: the cell to fill, the digit, a short plain-English reason, the unit to light up ([focus])
- * and the cells of any pattern used along the way ([pattern]).
+ * A hint: the cell to fill, the digit, a short plain-English reason, the area to shade ([focus]) and
+ * the cells of the pattern the reason talks about ([pattern]).
  */
 data class Hint(
     val cell: Int,
@@ -12,6 +12,9 @@ data class Hint(
     val pattern: List<Int> = emptyList(),
     /** The hint corrected a wrong number rather than filling an empty square. */
     val fixed: Boolean = false,
+    /** The reasoning steps the answer depends on (all of them needed), and the final placement. */
+    val steps: List<Step> = emptyList(),
+    val target: Step? = null,
 )
 
 object Hints {
@@ -24,13 +27,14 @@ object Hints {
         }
         if (values.all { it != 0 }) return null
         val s = LogicSolver(values)
-        if (selected != null && values[selected] == 0) singleAt(s, selected)?.let { return it }
+        val base = s.cand.copyOf()
+        if (selected != null && values[selected] == 0) singleAt(s, selected)?.let { return make(it, emptyList()) }
         val elims = mutableListOf<Step>()
         while (elims.size < 500) {
             val step = s.next() ?: break
             if (step.isPlacement) {
                 if (solution[step.placeCell] != step.placeDigit) break // can't happen with a consistent board
-                return Hint(step.placeCell, step.placeDigit, explain(step, elims), focusOf(step), elims.firstOrNull()?.cells.orEmpty())
+                return make(step, minimal(elims, step, base))
             }
             elims += step
             s.apply(step)
@@ -39,29 +43,66 @@ object Hints {
         return Hint(c, solution[c], "This one takes some very deep thinking, so here is the answer.", listOf(c))
     }
 
+    /** True if, starting from [base], every step in [steps] holds in turn and then [target] holds. */
+    fun follows(steps: List<Step>, target: Step, base: IntArray): Boolean {
+        val x = base.copyOf()
+        for (st in steps) {
+            if (!st.holdsIn(x)) return false
+            for ((c, d) in st.eliminations) x[c] = x[c] and Board.bit(d).inv()
+        }
+        return target.holdsIn(x)
+    }
+
+    /** Drop every step the answer doesn't need (harder ones first), until each remaining one is needed. */
+    fun minimal(steps: List<Step>, target: Step, base: IntArray): List<Step> {
+        var cur = steps
+        var changed = true
+        while (changed) {
+            changed = false
+            for (i in cur.indices.sortedByDescending { cur[it].technique.level }) {
+                val without = cur.filterIndexed { j, _ -> j != i }
+                if (follows(without, target, base)) { cur = without; changed = true; break }
+            }
+        }
+        return cur
+    }
+
+    private fun make(target: Step, steps: List<Step>): Hint {
+        val key = steps.lastOrNull { st -> st.technique.level == steps.maxOf { it.technique.level } }
+        return Hint(
+            target.placeCell, target.placeDigit, explain(target, steps),
+            focus = key?.area ?: target.area, pattern = key?.cells.orEmpty(), steps = steps, target = target,
+        )
+    }
+
     /** A single at the cell he has selected, if there is one: answers "what goes here?" directly. */
-    private fun singleAt(s: LogicSolver, c: Int): Hint? {
+    private fun singleAt(s: LogicSolver, c: Int): Step? {
         for (u in Board.unitsOf[c].sortedDescending()) { // box, column, row
             for (d in Board.digits(s.cand[c])) {
                 if (Board.units[u].none { it != c && s.cand[it] and Board.bit(d) != 0 } && Board.units[u].none { s.values[it] == d }) {
-                    val st = Step(Technique.HIDDEN_SINGLE, c, d, unit = u)
-                    return Hint(c, d, explain(st, emptyList()), focusOf(st))
+                    return s.hiddenSingleStep(c, d, u)
                 }
             }
         }
-        if (Board.count(s.cand[c]) == 1) {
-            val st = Step(Technique.NAKED_SINGLE, c, Board.firstDigit(s.cand[c]))
-            return Hint(c, st.placeDigit, explain(st, emptyList()), focusOf(st))
-        }
+        if (Board.count(s.cand[c]) == 1) return s.nakedSingleStep(c)
         return null
     }
 
-    private fun focusOf(step: Step): List<Int> =
-        if (step.unit >= 0) Board.units[step.unit].toList() else (Board.peers[step.placeCell].toList() + step.placeCell)
+    // ------------------------------------------------------------ words
 
-    fun placementText(step: Step): String = when (step.technique) {
-        Technique.HIDDEN_SINGLE -> "This is the only place for ${step.placeDigit} in this ${Board.unitKind(step.unit)}."
-        else -> "Only ${step.placeDigit} fits here. Its row, column and box already have every other number."
+    private val boxNames = listOf("top-left", "top-middle", "top-right", "middle-left", "centre", "middle-right", "bottom-left", "bottom-middle", "bottom-right")
+
+    /** "row 3", "column 5", "the top-left box". */
+    fun unitName(u: Int): String = when {
+        u < 9 -> "row ${u + 1}"
+        u < 18 -> "column ${u - 8}"
+        else -> "the ${boxNames[u - 18]} box"
+    }
+
+    private fun lineNames(lines: List<Int>): String {
+        val rows = lines.all { it < 9 }
+        val nums = lines.map { if (rows) it + 1 else it - 8 }.sorted()
+        return (if (rows) "rows " else "columns ") + and(nums)
     }
 
     private fun list(ds: List<Int>): String = when (ds.size) {
@@ -76,37 +117,49 @@ object Hints {
         else -> ds.dropLast(1).joinToString(", ") + " and " + ds.last()
     }
 
-    private val counts = listOf("", "One", "Two", "Three", "Four")
+    private val counts = listOf("No", "One", "Two", "Three", "Four")
+
+    fun placementText(step: Step): String = when (step.technique) {
+        Technique.HIDDEN_SINGLE -> "This is the only place for ${step.placeDigit} in ${unitName(step.unit)}."
+        else -> "Only ${step.placeDigit} fits here: its row, column and box have every other number."
+    }
 
     fun eliminationText(step: Step): String {
         val d = step.digits.firstOrNull() ?: 0
-        val kind = if (step.unit >= 0) Board.unitKind(step.unit) else ""
+        val where = if (step.unit >= 0) unitName(step.unit) else ""
         return when (step.technique) {
             Technique.POINTING -> {
-                val line = if (step.cells.map { Board.row(it) }.toSet().size == 1) "row" else "column"
-                "In the box, $d has to go in one $line, so the rest of that $line can't be $d."
+                val line = unitName(step.lines.first())
+                "In ${unitName(step.unit)}, the $d must go in $line, so the rest of $line can't be $d."
             }
-            Technique.BOX_LINE -> "In this $kind, $d has to go inside one box, so the rest of that box can't be $d."
+            Technique.BOX_LINE -> "In $where, the $d must go in ${unitName(step.lines.first())}, so the rest of that box can't be $d."
             Technique.NAKED_PAIR, Technique.NAKED_TRIPLE, Technique.NAKED_QUAD ->
-                "${counts[step.cells.size]} squares in a $kind can only hold ${list(step.digits)}, so no other square in that $kind can."
+                "${counts[step.cells.size]} shaded squares in $where can only hold ${list(step.digits)}, so the rest of it can't."
             Technique.HIDDEN_PAIR, Technique.HIDDEN_TRIPLE ->
-                "In a $kind, ${and(step.digits)} fit in just ${counts[step.cells.size].lowercase()} squares, so those squares hold nothing else."
-            Technique.X_WING -> "The ${d}s in two lines sit at the corners of a rectangle (an X-wing), so the rest of those lines can't be $d."
-            Technique.SWORDFISH -> "The ${d}s in three lines share the same three crossing lines (a swordfish), so the rest of those lines can't be $d."
-            Technique.XY_WING -> "Three squares with two options each (an XY-wing) mean one end must be $d, so squares that see both ends can't be $d."
-            Technique.XYZ_WING -> "Three linked squares (an XYZ-wing) mean one of them is $d, so squares that see all three can't be $d."
-            Technique.COLORING -> "Following the places where $d has only two spots in a row, column or box rules $d out of some squares."
-            Technique.XY_CHAIN -> "A chain of two-option squares means one end or the other is $d, so squares that see both ends can't be $d."
+                "In $where, ${and(step.digits)} fit only in ${counts[step.cells.size].lowercase()} shaded squares, so those hold nothing else."
+            Technique.X_WING, Technique.SWORDFISH -> {
+                val covers = step.cells.map { if (step.lines.first() < 9) 9 + Board.col(it) else Board.row(it) }.distinct()
+                "In ${lineNames(step.lines)}, the $d must go in ${lineNames(covers)}, so the rest of those can't be $d."
+            }
+            Technique.XY_WING, Technique.XYZ_WING ->
+                "In the three shaded squares one of the outer two must be $d, so a square that sees both can't be $d."
+            Technique.COLORING -> "In the shaded chain, every other square is $d, so a square that sees both kinds can't be $d."
+            Technique.XY_CHAIN -> "In the shaded chain of two-option squares one end is $d, so a square that sees both ends can't be $d."
             Technique.HIDDEN_SINGLE, Technique.NAKED_SINGLE -> ""
         }
     }
 
-    fun explain(place: Step, before: List<Step>): String {
-        val p = if (before.isEmpty() || place.technique == Technique.HIDDEN_SINGLE) placementText(place) else "Only ${place.placeDigit} fits here."
-        return when (before.size) {
-            0 -> p
-            1 -> "${eliminationText(before[0])} Then: ${p.replaceFirstChar { it.lowercase() }}"
-            else -> "${eliminationText(before[0])} After a few steps like that: ${p.replaceFirstChar { it.lowercase() }}"
+    /** Explains the hardest step the answer needs, then the answer. */
+    fun explain(place: Step, needed: List<Step>): String {
+        if (needed.isEmpty()) return placementText(place)
+        val key = needed.last { st -> st.technique.level == needed.maxOf { it.technique.level } }
+        val p = if (place.technique == Technique.HIDDEN_SINGLE) placementText(place).replaceFirstChar { it.lowercase() }
+        else "only ${place.placeDigit} fits here."
+        val others = needed.size - 1
+        return eliminationText(key) + when (others) {
+            0 -> " So $p"
+            1 -> " With one more step, $p"
+            else -> " With $others more steps, $p"
         }
     }
 }

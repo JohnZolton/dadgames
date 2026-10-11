@@ -49,6 +49,8 @@ data class GameState(
     val moves: Int = 0,
     /** Set when the board was filled with wrong numbers and auto-check is off: show them in red. */
     val revealWrong: Boolean = false,
+    /** Replaying a daily challenge he already finished: doesn't count in stats again. */
+    val replay: Boolean = false,
 ) {
     val difficulty get() = puzzle.difficulty
     fun isGiven(c: Int) = puzzle.givens[c] != 0
@@ -135,8 +137,17 @@ data class GameState(
 
     /** After three mistakes: take back the last move and keep going with one mistake to spare. */
     fun secondChance(): GameState {
-        if (status != Status.OUT_OF_MISTAKES) return this
-        val g = copy(status = Status.PLAYING).undoLast().game
+        if (status != Status.OUT_OF_MISTAKES || undo.isEmpty()) return this
+        val c = undo.last().first().cell
+        var g = copy(status = Status.PLAYING).undoLast().game
+        if (g.isWrong(c)) {
+            // An earlier wrong number in the same square: go back to how the square was before any of them.
+            val clean = g.undo.asReversed().asSequence().flatMap { it.asSequence() }
+                .firstOrNull { it.cell == c && (it.value == 0 || it.value == puzzle.solution[c]) }
+            val vals = g.values.toMutableList(); vals[c] = clean?.value ?: 0
+            val nts = g.notes.toMutableList(); nts[c] = clean?.notes ?: 0
+            g = g.copy(values = vals, notes = nts)
+        }
         return g.copy(mistakes = MISTAKE_LIMIT - 1)
     }
 

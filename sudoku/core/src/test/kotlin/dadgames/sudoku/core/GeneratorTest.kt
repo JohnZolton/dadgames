@@ -15,7 +15,7 @@ class GeneratorTest {
             assertTrue(p.givens.withIndex().all { (i, v) -> v == 0 || v == p.solution[i] })
             val grade = LogicSolver.grade(g)
             assertTrue(grade.solved)
-            assertEquals("grade of ${d.label}", d.level, grade.level)
+            assertEquals("grade of ${d.label}", d, grade.difficulty)
             assertEquals(d, p.difficulty)
         }
     }
@@ -23,22 +23,32 @@ class GeneratorTest {
     @Test fun easierLevelsHaveMoreClues() {
         val avg = Fixtures.corpus.mapValues { (_, l) -> l.map { it.clues }.average() }
         println("average clues: " + avg.entries.joinToString { "${it.key.label} %.1f".format(it.value) })
-        assertTrue(avg[Difficulty.EASY]!! >= 36.0)
+        assertTrue(avg[Difficulty.EASY]!! in 30.0..34.0)
         assertTrue(avg[Difficulty.EASY]!! > avg[Difficulty.MEDIUM]!!)
         assertTrue(avg[Difficulty.MEDIUM]!! > avg[Difficulty.HARD]!!)
-        Fixtures.corpus.getValue(Difficulty.EASY).forEach { assertTrue(it.clues >= 36) }
+        Fixtures.corpus.getValue(Difficulty.EASY).forEach { assertTrue(it.clues in 30..34) }
     }
 
     @Test fun easyNeedsOnlySinglesAndHarderLevelsNeedTheirTechniques() {
         for (p in Fixtures.corpus.getValue(Difficulty.EASY)) assertTrue(LogicSolver.grade(p.givens.toIntArray(), 0).solved)
-        for (d in listOf(Difficulty.MEDIUM, Difficulty.HARD, Difficulty.EXPERT)) for (p in Fixtures.corpus.getValue(d)) {
-            assertTrue("${d.label} solvable at its level", LogicSolver.grade(p.givens.toIntArray(), d.level).solved)
-            assertTrue("${d.label} not solvable a level lower", !LogicSolver.grade(p.givens.toIntArray(), d.level - 1).solved)
+        for (p in Fixtures.corpus.getValue(Difficulty.MEDIUM)) {
+            val g = LogicSolver.grade(p.givens.toIntArray())
+            assertTrue(g.counts[1] in 1..Difficulty.MEDIUM_MAX_STEPS && g.level == 1)
+        }
+        for (p in Fixtures.corpus.getValue(Difficulty.HARD)) {
+            val g = LogicSolver.grade(p.givens.toIntArray())
+            assertTrue(g.level == 2 || (g.level == 1 && g.counts[1] > Difficulty.MEDIUM_MAX_STEPS))
+            assertTrue(LogicSolver.grade(p.givens.toIntArray(), 2).solved)
+        }
+        for (p in Fixtures.corpus.getValue(Difficulty.EXPERT)) {
+            assertEquals(3, LogicSolver.grade(p.givens.toIntArray()).level)
+            assertTrue(!LogicSolver.grade(p.givens.toIntArray(), 2).solved)
         }
     }
 
     @Test fun givensAreSymmetric() {
-        for (p in Fixtures.corpus.values.flatten()) for (c in 0 until 81) assertEquals(p.givens[c] == 0, p.givens[80 - c] == 0)
+        // Expert gets a second pass that may break symmetry for a leaner grid.
+        for (p in Fixtures.corpus.values.flatten()) if (p.difficulty != Difficulty.EXPERT) for (c in 0 until 81) assertEquals(p.givens[c] == 0, p.givens[80 - c] == 0)
     }
 
     @Test fun generationIsFast() {
@@ -61,6 +71,16 @@ class GeneratorTest {
         assertEquals(Difficulty.HARD, a.difficulty)
         assertEquals(Difficulty.EASY, c.difficulty)
         assertEquals(1, Solver.countSolutions(a.givens.toIntArray()))
+    }
+
+    /** 12h: engine changes must not silently rewrite past daily puzzles. */
+    @Test fun dailyPuzzlesArePinned() {
+        val pins = mapOf(
+            ("2026-10-11" to 7) to "0190400030000080203009020040070204950000000005240908007006030090602000009000502602197465834765389213589126746378214958914657325243978167426831591652793489831542672",
+            ("2026-10-12" to 1) to "0060700309040002700009050013002506002000000080050680026003020000420005030300901005264718399148362758739254613812596472671439584957683126593127841426875937385941260",
+            ("2026-10-14" to 3) to "5041000800860004000000400030030100270003070007500206009000800000050003400600038025741392863867524911296485736438159272983671547519246389324817658152763494675938121",
+        )
+        for ((k, v) in pins) assertEquals("daily ${k.first}", v, Generator.daily(k.first, k.second).encode())
     }
 
     @Test fun dailyDifficultyCoversTheWeek() {

@@ -11,6 +11,7 @@ data class LevelStats(
     val streak: Int = 0,
     val bestStreak: Int = 0,
     val perfectWins: Int = 0,
+    val hintsUsed: Int = 0,
 ) {
     val winRate: Int get() = if (games == 0) 0 else Math.round(wins * 100f / games)
     val averageMs: Long get() = if (wins == 0) 0 else totalWinMs / wins
@@ -46,6 +47,8 @@ data class Stats(
 
     fun won(g: GameState, now: Long): Stats {
         val ms = g.elapsedMs
+        val rec = GameRecord(now, g.difficulty, true, ms, g.mistakes, g.hints, g.daily)
+        if (g.replay) return copy(recent = (listOf(rec) + recent).take(RECENT)) // already counted the first time
         val s = with(g.difficulty) {
             val streak = it.streak + 1
             it.copy(
@@ -54,21 +57,29 @@ data class Stats(
                 totalWinMs = it.totalWinMs + ms,
                 streak = streak, bestStreak = maxOf(it.bestStreak, streak),
                 perfectWins = it.perfectWins + if (g.mistakes == 0 && g.hints == 0) 1 else 0,
+                hintsUsed = it.hintsUsed + g.hints,
             )
         }
-        val rec = GameRecord(now, g.difficulty, true, ms, g.mistakes, g.hints, g.daily)
         return s.copy(recent = (listOf(rec) + recent).take(RECENT), dailyDone = if (g.daily != null) dailyDone + g.daily else dailyDone)
     }
 
     /** Left unfinished (new game started, or gave up after three mistakes). */
     fun lost(g: GameState, now: Long): Stats {
+        if (g.replay) return this
         val s = with(g.difficulty) { it.copy(streak = 0) }
         val rec = GameRecord(now, g.difficulty, false, g.elapsedMs, g.mistakes, g.hints, g.daily)
         return s.copy(recent = (listOf(rec) + recent).take(RECENT))
     }
 
 
-    companion object { const val RECENT = 25 }
+    companion object {
+        const val RECENT = 25
+
+        /** Fresh stats; a game already under way still counts as started, so it can't win "1 of 0". */
+        fun reset(inProgress: GameState?): Stats =
+            if (inProgress != null && inProgress.moves > 0 && inProgress.status != Status.WON && !inProgress.replay) Stats().started(inProgress.difficulty)
+            else Stats()
+    }
 }
 
 fun formatTime(ms: Long): String {
